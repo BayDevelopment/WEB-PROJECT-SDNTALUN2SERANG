@@ -6,6 +6,21 @@
     table.dataTable th.dt-nowrap {
         white-space: nowrap;
     }
+
+    .badge-male {
+        background: #e7f1ff;
+        color: #0d6efd;
+    }
+
+    .badge-female {
+        background: #ffe7f3;
+        color: #d63384;
+    }
+
+    .badge-unknown {
+        background: #eee;
+        color: #666;
+    }
 </style>
 <div class="container-fluid px-4 page-section">
     <div class="d-sm-flex align-items-center justify-content-between mb-3">
@@ -17,7 +32,7 @@
             </ol>
         </div>
         <div class="text-muted small mt-3 mt-sm-0">
-            Total Siswa: <strong><?= isset($d_siswa) ? number_format(count($d_siswa), 0, ',', '.') : 0 ?></strong>
+            Total Guru: <strong><?= isset($d_guru) ? number_format(count($d_guru), 0, ',', '.') : 0 ?></strong>
         </div>
     </div>
 
@@ -39,8 +54,8 @@
                                     name="q"
                                     value="<?= esc($q ?? '') ?>"
                                     class="form-control"
-                                    placeholder="Cari nama atau NISN..."
-                                    aria-label="Pencarian nama atau NISN"
+                                    placeholder="Cari nama atau NIP..."
+                                    aria-label="Pencarian nama atau NIP"
                                     autocomplete="off">
                             </div>
                         </div>
@@ -57,82 +72,106 @@
                 </div>
 
                 <!-- Tombol Tambah (di luar form) -->
-                <?php if (!empty($d_siswa)): ?>
+                <?php if (!empty($d_guru)): ?>
                     <div class="col-12 col-md-3 text-md-end">
-                        <a href="<?= base_url('operator/tambah-siswa') ?>" class="btn btn-gradient rounded-pill btn-sm py-2 w-100 w-md-auto">
+                        <a href="<?= base_url('operator/tambah-guru') ?>" class="btn btn-gradient rounded-pill btn-sm py-2 w-100 w-md-auto">
                             <i class="fa-solid fa-file-circle-plus me-2"></i> Tambah
                         </a>
                     </div>
                 <?php endif; ?>
             </div>
             <!-- Tabel -->
-            <?php if (!empty($d_siswa)): ?>
+            <?php if (!empty($d_guru)): ?>
                 <div class="table-responsive">
-                    <table id="tableDataSiswa" class="table table-modern align-middle">
+                    <table id="tableDataGuru" class="table table-modern align-middle">
                         <thead>
                             <tr>
                                 <th class="w-40px">No</th>
                                 <th>Foto</th>
-                                <th>NISN</th>
+                                <th>NIP</th>
                                 <th>Nama Lengkap</th>
-                                <th>Gender</th>
+                                <th>Jenis Kelamin</th>
                                 <th class="text-end">Aksi</th>
                             </tr>
                         </thead>
-                        <tbody id="tableSiswa">
-                            <?php $no = 1;
-                            foreach ($d_siswa as $d_s):
-                                $foto = trim((string)($d_s['photo'] ?? ''));
-                                $img  = $foto !== '' ? base_url('assets/img/uploads/' . esc($foto))
-                                    : base_url('assets/img/user.png');
-                                $nisn = (string)($d_s['nisn'] ?? '');
-                                $nama = (string)($d_s['full_name'] ?? '');
-                                $gndr = strtolower((string)($d_s['gender'] ?? ''));
-                                $tag  = (str_contains($gndr, 'laki') || $gndr === 'l') ? 'Laki-laki'
-                                    : ((str_contains($gndr, 'perem') || $gndr === 'p') ? 'Perempuan' : ($d_s['gender'] ?? '—'));
-                                $badgeClass = ($tag === 'Laki-laki') ? 'badge-male' : (($tag === 'Perempuan') ? 'badge-female' : 'badge-unknown');
+
+                        <tbody id="tableGuru">
+                            <?php
+                            $no = 1; // <- inisialisasi counter sekali di luar foreach
+
+                            // lokasi file untuk foto
+                            $uploadsRel = 'assets/img/uploads/';   // relatif dari public/
+                            $defaultRel = 'assets/img/user.png';   // fallback default
                             ?>
+
+                            <?php foreach ($d_guru as $d_g): ?>
+                                <?php
+                                $nip   = (string)($d_g['nip'] ?? '');
+                                $nama  = (string)($d_g['nama_lengkap'] ?? '');
+                                $jk    = strtoupper((string)($d_g['jenis_kelamin'] ?? '')); // L/P/-
+                                $tag   = ($jk === 'L') ? 'Laki-laki' : (($jk === 'P') ? 'Perempuan' : '—');
+                                $badgeClass = ($jk === 'L') ? 'badge-male' : (($jk === 'P') ? 'badge-female' : 'badge-unknown');
+
+                                // tentukan URL gambar
+                                $foto = trim((string)($d_g['foto'] ?? ''));
+                                if ($foto !== '' && preg_match('~^https?://~i', $foto)) {
+                                    $img = $foto; // URL absolut
+                                } elseif ($foto !== '' && preg_match('/^[a-zA-Z0-9._-]+$/', $foto) && is_file(FCPATH . $uploadsRel . $foto)) {
+                                    $img = base_url($uploadsRel . $foto); // file lokal valid
+                                } else {
+                                    $img = base_url($defaultRel); // fallback default
+                                }
+                                ?>
+
                                 <tr data-name="<?= esc(mb_strtolower($nama, 'UTF-8')) ?>"
-                                    data-nisn="<?= esc($nisn) ?>"
-                                    data-gender="<?= esc($gndr) ?>">
+                                    data-nip="<?= esc($nip) ?>">
                                     <td class="text-muted"><?= $no++ ?>.</td>
                                     <td>
                                         <div class="avatar-wrap">
-                                            <img src="<?= $img ?>" alt="Foto <?= esc($nama) ?>" class="avatar-40 rounded-circle">
+                                            <img src="<?= esc($img) ?>" alt="Foto <?= esc($nama) ?>" class="avatar-40 rounded-circle">
                                         </div>
                                     </td>
-                                    <td><span class="font-monospace"><?= esc($nisn) ?></span></td>
+                                    <td><span class="font-monospace"><?= esc($nip) ?></span></td>
                                     <td class="fw-semibold"><?= esc($nama) ?></td>
                                     <td>
-                                        <span class="badge <?= $badgeClass ?>"><?= esc($tag) ?></span>
+                                        <span class="badge <?= esc($badgeClass) ?>"><?= esc($tag) ?></span>
                                     </td>
                                     <td class="text-end">
                                         <div class="btn-group btn-group-sm" role="group">
                                             <a href="#" class="btn btn-outline-danger"
-                                                onclick="confirmDeleteSiswa('<?= esc($nisn, 'js') ?>')"
+                                                onclick="confirmDeleteGuru('<?= esc($nip, 'js') ?>')"
                                                 title="Hapus">
                                                 <i class="fa-solid fa-trash"></i>
                                             </a>
-                                            <a href="<?= base_url('operator/detail-siswa/' . urlencode($nisn)) ?>" class="btn btn-outline-secondary" title="Detail">
+                                            <a href="<?= base_url('operator/detail-guru/' . urlencode($nip)) ?>"
+                                                class="btn btn-outline-secondary" title="Detail">
                                                 <i class="fa-regular fa-eye"></i>
                                             </a>
-                                            <a href="<?= base_url('operator/edit-siswa/' . urlencode($nisn)) ?>" class="btn btn-primary" title="Edit">
+                                            <a href="<?= base_url('operator/edit-guru/' . urlencode($nip)) ?>"
+                                                class="btn btn-primary" title="Edit">
                                                 <i class="fa-solid fa-pen-to-square"></i>
                                             </a>
                                         </div>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
+
+                            <?php if (empty($d_guru)): ?>
+                                <tr>
+                                    <td colspan="6" class="text-center text-muted">Belum ada data guru.</td>
+                                </tr>
+                            <?php endif; ?>
                         </tbody>
                     </table>
+
                 </div>
             <?php else: ?>
                 <!-- Empty state -->
                 <div class="empty-card text-center p-5">
                     <img src="<?= base_url('assets/img/empty-box.png') ?>" class="empty-illustration mb-3" alt="Kosong">
-                    <h5 class="mb-1">Belum ada data siswa</h5>
-                    <p class="text-muted mb-3">Tambahkan data siswa pertama Anda untuk mulai mengelola informasi.</p>
-                    <a href="<?= base_url('operator/tambah-siswa') ?>" class="btn btn-gradient rounded-pill btn-sm py-2">
+                    <h5 class="mb-1">Belum ada data guru</h5>
+                    <p class="text-muted mb-3">Tambahkan data guru pertama Anda untuk mulai mengelola informasi.</p>
+                    <a href="<?= base_url('operator/tambah-guru') ?>" class="btn btn-gradient rounded-pill btn-sm py-2">
                         <i class="fa-solid fa-file-circle-plus me-2"></i> Tambah Data
                     </a>
                 </div>

@@ -107,6 +107,38 @@
             .password-meter .progress-bar.bg-good {
                 background: #10b981
             }
+
+            /* Override: brand gradient biru–ungu */
+            .btn-brand {
+                background: linear-gradient(135deg, #2563eb, #7c3aed);
+                color: #fff;
+                border: 0;
+                border-radius: .65rem;
+                padding: .6rem 1rem;
+                font-weight: 600;
+                box-shadow: 0 6px 14px rgba(37, 99, 235, .22), 0 2px 6px rgba(124, 58, 237, .16);
+                transition: transform .15s ease, box-shadow .2s ease, filter .2s ease, opacity .2s ease;
+            }
+
+            .btn-brand:hover {
+                filter: brightness(1.03) saturate(1.05);
+                transform: translateY(-1px);
+                box-shadow: 0 10px 18px rgba(37, 99, 235, .26), 0 3px 8px rgba(124, 58, 237, .20);
+            }
+
+            .btn-brand:active {
+                transform: translateY(0);
+                box-shadow: 0 4px 10px rgba(37, 99, 235, .20), 0 2px 5px rgba(0, 0, 0, .06);
+            }
+
+            /* Fokus ring disesuaikan ke palet baru */
+            .ring-focus:focus,
+            .ring-focus:focus-visible {
+                outline: none !important;
+                box-shadow:
+                    0 0 0 4px rgba(37, 99, 235, .18),
+                    0 0 0 2px rgba(124, 58, 237, .55);
+            }
         </style>
         <div class="col-12 col-lg-4">
             <div class="card border-0 shadow-sm rounded-4 overflow-hidden profile-modern">
@@ -166,7 +198,7 @@
                 <div class="card-header bg-transparent border-0 pb-0">
                     <ul class="nav nav-pills nav-fill gap-2 p-2 bg-pills rounded-3" id="profileTabs" role="tablist">
                         <li class="nav-item" role="presentation">
-                            <button class="nav-link active" id="tab-account" data-bs-toggle="tab" data-bs-target="#pane-account" type="button" role="tab">
+                            <button class="nav-link " id="tab-account" data-bs-toggle="tab" data-bs-target="#pane-account" type="button" role="tab">
                                 <i class="fa-solid fa-user-pen me-1"></i> Data Akun
                             </button>
                         </li>
@@ -181,8 +213,9 @@
                 <div class="card-body">
                     <div class="tab-content" id="profileTabContent">
                         <!-- Data Akun -->
-                        <div class="tab-pane fade show active" id="pane-account" role="tabpanel">
-                            <form action="<?= base_url('operator/profile/update') ?>" method="post" class="row g-3">
+                        <div class="tab-pane fade" id="pane-account" role="tabpanel">
+                            <form action="<?= base_url('operator/profile') ?>" method="post" class="row g-3">
+                                <?php $v = $validation ?? \Config\Services::validation(); ?>
                                 <?= csrf_field() ?>
 
                                 <!-- Username -->
@@ -216,29 +249,45 @@
                                     </div>
                                 </div>
 
-                                <!-- Role (readonly soft) -->
+                                <!-- Role (dropdown) -->
                                 <div class="col-md-6">
-                                    <label class="form-label">Role</label>
+                                    <label for="role" class="form-label">Role</label>
                                     <div class="input-group input-icon">
                                         <span class="input-group-text"><i class="fa-solid fa-user-shield"></i></span>
-                                        <input type="text" class="form-control read-only-soft" value="<?= esc($user['role'] ?? 'operator') ?>" readonly>
+                                        <?php $roleVal = old('role', $user['role'] ?? 'operator'); ?>
+                                        <select name="role" id="role"
+                                            class="form-select <?= isset($v) && $v->hasError('role') ? 'is-invalid' : '' ?>">
+                                            <option value="operator" <?= $roleVal === 'operator' ? 'selected' : ''; ?>>Operator</option>
+                                            <option value="guru" <?= $roleVal === 'guru' ? 'selected' : ''; ?>>Guru</option>
+                                            <option value="siswa" <?= $roleVal === 'siswa' ? 'selected' : ''; ?>>Siswa</option>
+                                        </select>
+                                        <?php if (isset($v) && $v->hasError('role')): ?>
+                                            <div class="invalid-feedback"><?= esc($v->getError('role')) ?></div>
+                                        <?php endif; ?>
                                     </div>
                                 </div>
 
-                                <!-- Status (readonly soft) -->
+                                <!-- Status (dropdown) -->
                                 <div class="col-md-6">
-                                    <label class="form-label">Status</label>
+                                    <label for="is_active" class="form-label">Status</label>
                                     <div class="input-group input-icon">
                                         <span class="input-group-text"><i class="fa-regular fa-circle-check"></i></span>
-                                        <input type="text" class="form-control read-only-soft"
-                                            value="<?= (int)($user['is_active'] ?? 0) === 1 ? 'Aktif' : 'Nonaktif' ?>" readonly>
+                                        <?php $activeVal = (int) old('is_active', (int)($user['is_active'] ?? 0)); ?>
+                                        <select name="is_active" id="is_active"
+                                            class="form-select <?= isset($v) && $v->hasError('is_active') ? 'is-invalid' : '' ?>">
+                                            <option value="1" <?= $activeVal === 1 ? 'selected' : ''; ?>>Aktif</option>
+                                            <option value="0" <?= $activeVal === 0 ? 'selected' : ''; ?>>Nonaktif</option>
+                                        </select>
+                                        <?php if (isset($v) && $v->hasError('is_active')): ?>
+                                            <div class="invalid-feedback"><?= esc($v->getError('is_active')) ?></div>
+                                        <?php endif; ?>
                                     </div>
                                 </div>
 
                                 <!-- Actions -->
-                                <div class="col-12 d-flex justify-content-end gap-2 mt-2">
-                                    <button type="reset" class="btn btn-light">Reset</button>
-                                    <button type="submit" class="btn btn-brand ring-focus">
+                                <div class="col-12 d-flex justify-content-end gap-2 mt-3">
+                                    <button type="reset" class="btn btn-light rounded-pill py-2">Reset</button>
+                                    <button type="submit" class="btn btn-brand ring-focus rounded-pill py-2">
                                         <i class="fa-regular fa-floppy-disk me-1"></i> Simpan Perubahan
                                     </button>
                                 </div>
@@ -248,6 +297,7 @@
                         <!-- Keamanan -->
                         <div class="tab-pane fade" id="pane-security" role="tabpanel">
                             <form action="<?= base_url('operator/profile/password') ?>" method="post" class="row g-3">
+                                <?php $v = $validation ?? \Config\Services::validation(); ?>
                                 <?= csrf_field() ?>
 
                                 <!-- Current -->
@@ -255,31 +305,23 @@
                                     <label class="form-label">Password Saat Ini</label>
                                     <div class="input-group input-icon">
                                         <span class="input-group-text"><i class="fa-solid fa-lock"></i></span>
-                                        <input id="current_password" type="password" name="current_password"
-                                            class="form-control <?= $v->hasError('current_password') ? 'is-invalid' : '' ?>"
+                                        <input id="current_password" type="text" name="password"
+                                            class="form-control <?= $v->hasError('password') ? 'is-invalid' : '' ?>"
                                             placeholder="••••••••">
-                                        <button class="btn btn-outline-secondary btn-toggle-pass" type="button" data-target="#current_password" title="Tampilkan">
-                                            <i class="fa-regular fa-eye"></i>
-                                        </button>
                                     </div>
-                                    <?php if ($v->hasError('current_password')): ?>
-                                        <div class="invalid-feedback d-block"><?= $v->getError('current_password') ?></div>
+                                    <?php if ($v->hasError('password')): ?>
+                                        <div class="invalid-feedback d-block"><?= $v->getError('password') ?></div>
                                     <?php endif; ?>
                                 </div>
-
-                                <div class="col-md-6"></div>
 
                                 <!-- New -->
                                 <div class="col-md-6">
                                     <label class="form-label">Password Baru</label>
                                     <div class="input-group input-icon">
                                         <span class="input-group-text"><i class="fa-solid fa-key"></i></span>
-                                        <input id="new_password" type="password" name="new_password"
+                                        <input id="new_password" type="text" name="new_password"
                                             class="form-control <?= $v->hasError('new_password') ? 'is-invalid' : '' ?>"
                                             placeholder="Min. 8 karakter">
-                                        <button class="btn btn-outline-secondary btn-toggle-pass" type="button" data-target="#new_password" title="Tampilkan">
-                                            <i class="fa-regular fa-eye"></i>
-                                        </button>
                                     </div>
                                     <?php if ($v->hasError('new_password')): ?>
                                         <div class="invalid-feedback d-block"><?= $v->getError('new_password') ?></div>
@@ -295,12 +337,9 @@
                                     <label class="form-label">Konfirmasi Password Baru</label>
                                     <div class="input-group input-icon">
                                         <span class="input-group-text"><i class="fa-regular fa-circle-check"></i></span>
-                                        <input id="new_password_confirm" type="password" name="new_password_confirm"
+                                        <input id="new_password_confirm" type="text" name="new_password_confirm"
                                             class="form-control <?= $v->hasError('new_password_confirm') ? 'is-invalid' : '' ?>"
                                             placeholder="Ulangi password baru">
-                                        <button class="btn btn-outline-secondary btn-toggle-pass" type="button" data-target="#new_password_confirm" title="Tampilkan">
-                                            <i class="fa-regular fa-eye"></i>
-                                        </button>
                                     </div>
                                     <?php if ($v->hasError('new_password_confirm')): ?>
                                         <div class="invalid-feedback d-block"><?= $v->getError('new_password_confirm') ?></div>
@@ -328,54 +367,37 @@
 
 <?= $this->section('scripts') ?>
 <script>
-    (function() {
-        const btn = document.getElementById('copyEmail');
-        btn?.addEventListener('click', async () => {
-            const email = btn.dataset.email || '';
-            if (!email) return;
-            try {
-                await navigator.clipboard.writeText(email);
-                const prev = btn.innerHTML;
-                btn.innerHTML = '<span class="me-1">Tersalin</span><i class="fa-solid fa-check"></i>';
-                setTimeout(() => btn.innerHTML = prev, 1200);
-            } catch (_) {}
-        });
-    })();
-
-    (function() {
-        function resolveTarget(btn) {
-            var sel = btn.getAttribute('data-target') || '';
-            if (sel) {
-                var id = sel[0] === '#' ? sel.slice(1) : sel;
-                var byId = document.getElementById(id);
-                if (byId) return byId;
-                var byQS = document.querySelector(sel);
-                if (byQS) return byQS;
-            }
-            var group = btn.closest('.input-group');
-            return group ? group.querySelector('input.form-control') : null;
+    document.addEventListener('DOMContentLoaded', function() {
+        function toggleIcon(icon, show) {
+            if (!icon) return;
+            const isFA6 = !!document.querySelector('.fa-solid, .fa-regular, .fa-brands');
+            icon.classList.remove('fa-regular', 'fa-solid', 'fas', 'fa-eye', 'fa-eye-slash');
+            icon.classList.add(isFA6 ? 'fa-solid' : 'fas', show ? 'fa-eye-slash' : 'fa-eye');
         }
 
         document.addEventListener('click', function(e) {
-            var btn = e.target.closest('.btn-toggle-pass');
+            const btn = e.target.closest('.btn-toggle-pass');
             if (!btn) return;
-            e.preventDefault();
 
-            var input = resolveTarget(btn);
+            const sel = btn.getAttribute('data-target') || '';
+            const input = sel ? document.querySelector(sel) : null;
             if (!input) return;
 
-            var willShow = input.type === 'password';
-            input.type = willShow ? 'text' : 'password';
-
-            var icon = btn.querySelector('i');
-            if (icon) {
-                icon.classList.remove('fa-eye', 'fa-eye-slash');
-                icon.classList.add(willShow ? 'fa-eye-slash' : 'fa-eye');
+            const show = input.type === 'password';
+            try {
+                input.type = show ? 'text' : 'password';
+            } catch (err) {
+                const clone = input.cloneNode(true);
+                clone.setAttribute('type', show ? 'text' : 'password');
+                input.parentNode.replaceChild(clone, input);
             }
 
-            btn.setAttribute('aria-pressed', willShow ? 'true' : 'false');
-            btn.title = willShow ? 'Sembunyikan' : 'Tampilkan';
+            toggleIcon(btn.querySelector('i'), show);
+            btn.title = show ? 'Sembunyikan' : 'Tampilkan';
+            btn.setAttribute('aria-pressed', show ? 'true' : 'false');
         });
-    })();
+    });
 </script>
+
+
 <?= $this->endSection() ?>

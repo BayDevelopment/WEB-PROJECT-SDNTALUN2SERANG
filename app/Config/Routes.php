@@ -47,4 +47,15 @@ $routes->group('operator', ['filter' => ['auth', 'role:operator']], static funct
     $routes->get('detail-siswa/(:num)',  'OperatorController::page_detail_siswa/$1');
     $routes->get('data-siswa/delete/(:num)',  'OperatorController::aksi_delete_siswa/$1');
     $routes->get('profile',  'OperatorController::page_profile');
+    $routes->post('profile',  'OperatorController::aksi_update_profile');
+    $routes->post('profile/password',  'OperatorController::aksi_update_password');
+    // data user
+    $routes->get('data-user',  'OperatorController::data_user');
+    $routes->get('tambah-user',  'OperatorController::page_tambah_user');
+    $routes->post('tambah-user',  'OperatorController::aksi_insert_user');
+
+    // data guru
+    $routes->get('data-guru',  'OperatorController::data_guru');
+    $routes->get('tambah-guru',  'OperatorController::page_tambah_guru');
+    $routes->post('tambah-guru',  'OperatorController::aksi_tambah_guru');
 });

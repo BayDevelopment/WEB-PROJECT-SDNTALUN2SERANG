@@ -39,7 +39,7 @@
                         <a class="nav-link <?= ($nav_link === 'Data Siswa' ? 'active' : '') ?> mb-2" href="<?= base_url('operator/data-siswa') ?>">
                             <i class="fa-regular fa-id-badge me-2"></i> Data Siswa
                         </a>
-                        <a class="nav-link" href="<?= base_url('operator/guru') ?>">
+                        <a class="nav-link <?= ($nav_link === 'Data Guru' ? 'active' : '') ?> mb-2" href="<?= base_url('operator/data-guru') ?>">
                             <i class="fa-solid fa-chalkboard-user me-2"></i> Data Guru
                         </a>
                     </nav>
