@@ -108,6 +108,7 @@
             }
         });
 
+        // datatables siswa
         $(function() {
             const $table = $('#tableDataSiswa');
 
@@ -232,6 +233,259 @@
                 dt.search(this.value).draw();
             }, 350));
         });
+
+        // datatables guru
+        $(function() {
+            const $table = $('#tableDataGuru');
+
+            const dt = new DataTable($table[0], {
+                // ===== UI =====
+                dom: "<'row mb-2'<'col-sm-12 col-md-6'B><'col-sm-12 col-md-6'f>>" +
+                    "<'row'<'col-12'tr>>" +
+                    "<'row mt-2'<'col-sm-12 col-md-5'i><'col-sm-12 col-md-7'p>>",
+
+                buttons: [{
+                    extend: 'excelHtml5',
+                    text: '<i class="fas fa-file-excel me-2"></i>Download Excel',
+                    className: 'btn btn-success rounded-pill',
+                    title: 'Laporan_Guru',
+                    filename: () => {
+                        const d = new Date().toISOString().slice(0, 10);
+                        return `Laporan_Guru_${d}`;
+                    },
+                    exportOptions: {
+                        // Kolom: 0=No, 1=Foto, 2=NIP, 3=Nama, 4=JK, 5=Aksi
+                        columns: [0, 2, 3, 4], // exclude Foto & Aksi
+                        modifier: {
+                            search: 'applied',
+                            order: 'applied',
+                            page: 'all'
+                        },
+                        format: {
+                            body: function(data, row, column) {
+                                // kalau data elemen DOM, ambil textContent
+                                if (data && data.nodeType === 1) return data.textContent.trim();
+                                // jika string HTML, singkirkan tag
+                                if (typeof data === 'string') {
+                                    const tmp = document.createElement('div');
+                                    tmp.innerHTML = data;
+                                    return tmp.textContent.trim();
+                                }
+                                return data ?? '';
+                            }
+                        }
+                    }
+                }],
+
+                // ===== Tabel =====
+                responsive: {
+                    details: {
+                        type: 'inline',
+                        target: 'tr'
+                    } // collapse rapi di mobile
+                },
+                scrollX: true, // biar ada scroll horizontal kalau mepet
+                autoWidth: false,
+                lengthMenu: [
+                    [10, 25, 50, -1],
+                    [10, 25, 50, 'Semua']
+                ],
+                pageLength: 10,
+                stateSave: true,
+                language: {
+                    url: "https://cdn.datatables.net/plug-ins/2.1.6/i18n/id.json"
+                },
+
+                // ===== Kolom & Perilaku =====
+                columnDefs: [{
+                        targets: '_all',
+                        className: 'dt-nowrap'
+                    }, // nowrap semua kolom
+                    {
+                        targets: 0,
+                        orderable: false,
+                        searchable: false,
+                        responsivePriority: 1
+                    }, // No
+                    {
+                        targets: 1,
+                        orderable: false,
+                        searchable: false,
+                        responsivePriority: 2
+                    }, // Foto
+                    {
+                        targets: 5,
+                        orderable: false,
+                        searchable: false,
+                        className: 'text-end',
+                        responsivePriority: 1
+                    } // Aksi
+                ],
+                order: [
+                    [2, 'asc']
+                ], // urut default by NIP (kolom index 2)
+
+                // ===== Nomor urut dinamis =====
+                drawCallback: function() {
+                    const api = this.api();
+                    const info = api.page.info();
+                    api.column(0, {
+                        page: 'current'
+                    }).nodes().each(function(cell, i) {
+                        cell.innerHTML = (info.start + i + 1) + '.';
+                    });
+                }
+            });
+
+            // Recalculate kolom setelah init (untuk lebar kolom yang pas)
+            dt.on('init', () => {
+                dt.columns.adjust();
+                dt.responsive.recalc();
+            });
+
+            // Jika ada gambar yang terlambat load, recalibrate responsive
+            $table.find('img').on('load', () => dt.columns.adjust().responsive.recalc());
+
+            // Debounce search agar halus
+            const $filter = $('#tableDataGuru_filter input[type=search]');
+            const debounce = (fn, d = 400) => {
+                let t;
+                return (...a) => {
+                    clearTimeout(t);
+                    t = setTimeout(() => fn.apply(this, a), d);
+                };
+            };
+            $filter.off('keyup.DT input.DT').on('keyup', debounce(function() {
+                dt.search(this.value).draw();
+            }, 350));
+        });
+
+        // datatbles user
+        $(function() {
+            const $table = $('#tableDataUser');
+
+            const dt = new DataTable($table[0], {
+                // ===== UI =====
+                dom: "<'row mb-2'<'col-sm-12 col-md-6'B><'col-sm-12 col-md-6'f>>" +
+                    "<'row'<'col-12'tr>>" +
+                    "<'row mt-2'<'col-sm-12 col-md-5'i><'col-sm-12 col-md-7'p>>",
+
+                buttons: [{
+                    extend: 'excelHtml5',
+                    text: '<i class="fas fa-file-excel me-2"></i>Download Excel',
+                    className: 'btn btn-success rounded-pill',
+                    title: 'Laporan_User',
+                    filename: () => {
+                        const d = new Date().toISOString().slice(0, 10);
+                        return `Laporan_User_${d}`;
+                    },
+                    exportOptions: {
+                        // Kolom: 0=No, 1=Foto, 2=Username, 3=Email, 4=Role, 5=Status, 6=Aksi
+                        columns: [0, 2, 3, 4, 5], // exclude Foto & Aksi
+                        modifier: {
+                            search: 'applied',
+                            order: 'applied',
+                            page: 'all'
+                        },
+                        format: {
+                            body: function(data) {
+                                // Kalau data elemen DOM, ambil textContent
+                                if (data && data.nodeType === 1) return data.textContent.trim();
+                                // Jika string HTML, singkirkan tag
+                                if (typeof data === 'string') {
+                                    const tmp = document.createElement('div');
+                                    tmp.innerHTML = data;
+                                    return tmp.textContent.trim();
+                                }
+                                return data ?? '';
+                            }
+                        }
+                    }
+                }],
+
+                // ===== Tabel =====
+                responsive: {
+                    details: {
+                        type: 'inline',
+                        target: 'tr'
+                    }
+                },
+                scrollX: true,
+                autoWidth: false,
+                lengthMenu: [
+                    [10, 25, 50, -1],
+                    [10, 25, 50, 'Semua']
+                ],
+                pageLength: 10,
+                stateSave: true,
+                language: {
+                    url: "https://cdn.datatables.net/plug-ins/2.1.6/i18n/id.json"
+                },
+
+                // ===== Kolom & Perilaku =====
+                columnDefs: [{
+                        targets: '_all',
+                        className: 'dt-nowrap'
+                    }, // nowrap semua
+                    {
+                        targets: 0,
+                        orderable: false,
+                        searchable: false,
+                        responsivePriority: 1
+                    }, // No
+                    {
+                        targets: 1,
+                        orderable: false,
+                        searchable: false,
+                        responsivePriority: 2
+                    }, // Foto
+                    {
+                        targets: 6,
+                        orderable: false,
+                        searchable: false,
+                        className: 'text-end',
+                        responsivePriority: 1
+                    } // Aksi
+                ],
+                order: [
+                    [2, 'asc']
+                ], // urut default by Username (kolom 2)
+
+                // ===== Nomor urut dinamis =====
+                drawCallback: function() {
+                    const api = this.api();
+                    const info = api.page.info();
+                    api.column(0, {
+                        page: 'current'
+                    }).nodes().each(function(cell, i) {
+                        cell.innerHTML = (info.start + i + 1) + '.';
+                    });
+                }
+            });
+
+            // Recalculate kolom setelah init (untuk lebar kolom yang pas)
+            dt.on('init', () => {
+                dt.columns.adjust();
+                dt.responsive.recalc();
+            });
+
+            // Jika ada gambar yang terlambat load, recalibrate responsive
+            $table.find('img').on('load', () => dt.columns.adjust().responsive.recalc());
+
+            // Debounce search agar halus
+            const $filter = $('#tableDataUser_filter input[type=search]');
+            const debounce = (fn, d = 400) => {
+                let t;
+                return (...a) => {
+                    clearTimeout(t);
+                    t = setTimeout(() => fn.apply(this, a), d);
+                };
+            };
+            $filter.off('keyup.DT input.DT').on('keyup', debounce(function() {
+                dt.search(this.value).draw();
+            }, 350));
+        });
+
 
         // delete
         function confirmDeleteSiswa(idOrNisn) {

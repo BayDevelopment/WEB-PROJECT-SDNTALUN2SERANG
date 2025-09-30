@@ -84,7 +84,7 @@
             </ol>
         </div>
         <div class="text-muted small mt-3 mt-sm-0">
-            Total Siswa: <strong><?= isset($d_siswa) ? number_format(count($d_siswa), 0, ',', '.') : 0 ?></strong>
+            Total Guru: <strong><?= isset($d_guru) ? number_format(count($d_guru), 0, ',', '.') : 0 ?></strong>
         </div>
     </div>
 
@@ -92,15 +92,15 @@
     <div class="card card-elevated mb-3">
         <div class="card-header-modern">
             <div class="title-wrap">
-                <i class="fa-solid fa-user-plus me-2"></i> Form Tambah Siswa
+                <i class="fa-solid fa-user-plus me-2"></i> Form Tambah Guru
             </div>
         </div>
 
         <div class="card-body">
             <?php $v = $validation ?? \Config\Services::validation(); ?>
 
-            <form id="formTambahSiswa"
-                action="<?= site_url('operator/tambah-siswa') ?>"
+            <form id="formTambahGuru"
+                action="<?= site_url('operator/tambah-guru') ?>"
                 method="post"
                 enctype="multipart/form-data"
                 autocomplete="off"
@@ -108,7 +108,7 @@
                 <?= csrf_field() ?>
 
                 <?php
-                // Ambil error dari flash session (di-set di controller dengan ->with('errors', ...))
+                // Ambil error per-field dari flash session (controller: ->with('errors', $this->validator->getErrors()))
                 $errors = session('errors') ?? [];
                 $hasErr = fn(string $f) => isset($errors[$f]);
                 $getErr = fn(string $f) => $errors[$f] ?? '';
@@ -120,7 +120,8 @@
                         <label for="user_id" class="form-label">Data User</label>
                         <?php if (!empty($d_user) && is_array($d_user)): ?>
                             <select name="user_id" id="user_id"
-                                class="form-select<?= $hasErr('user_id') ? ' is-invalid' : '' ?>">
+                                class="form-select<?= $hasErr('user_id') ? ' is-invalid' : '' ?>"
+                                required aria-describedby="userIdFeedback">
                                 <option value="" disabled <?= old('user_id') ? '' : 'selected' ?>>— Pilih User —</option>
                                 <?php foreach ($d_user as $u): ?>
                                     <?php
@@ -133,7 +134,7 @@
                                 <?php endforeach; ?>
                             </select>
                             <?php if ($hasErr('user_id')): ?>
-                                <div class="invalid-feedback d-block"><?= esc($getErr('user_id')) ?></div>
+                                <div id="userIdFeedback" class="invalid-feedback d-block"><?= esc($getErr('user_id')) ?></div>
                             <?php endif; ?>
                         <?php else: ?>
                             <div class="alert alert-warning mb-2">User tidak ditemukan. Tambahkan user terlebih dahulu.</div>
@@ -143,133 +144,105 @@
                         <?php endif; ?>
                     </div>
 
-                    <!-- nisn -->
+                    <!-- nip -->
                     <div class="col-md-6">
-                        <label for="nisn" class="form-label">NISN</label>
+                        <label for="nip" class="form-label">NIP</label>
                         <input type="text"
-                            class="form-control<?= $hasErr('nisn') ? ' is-invalid' : '' ?>"
-                            id="nisn" name="nisn"
-                            placeholder="Masukkan NISN"
-                            value="<?= esc(old('nisn') ?? '') ?>"
-                            maxlength="16" inputmode="numeric" pattern="[0-9]*"
-                            aria-describedby="nisnFeedback">
-                        <?php if ($hasErr('nisn')): ?>
-                            <div id="nisnFeedback" class="invalid-feedback d-block"><?= esc($getErr('nisn')) ?></div>
+                            class="form-control<?= $hasErr('nip') ? ' is-invalid' : '' ?>"
+                            id="nip" name="nip"
+                            placeholder="Masukkan NIP"
+                            value="<?= esc(old('nip') ?? '') ?>"
+                            required maxlength="30" inputmode="numeric" pattern="\d{8,30}"
+                            aria-describedby="nipFeedback">
+                        <?php if ($hasErr('nip')): ?>
+                            <div id="nipFeedback" class="invalid-feedback d-block"><?= esc($getErr('nip')) ?></div>
                         <?php endif; ?>
                     </div>
 
-                    <!-- full_name -->
+                    <!-- nama_lengkap -->
                     <div class="col-md-6">
-                        <label for="full_name" class="form-label">Nama Lengkap</label>
+                        <label for="nama_lengkap" class="form-label">Nama Lengkap</label>
                         <input type="text"
-                            class="form-control<?= $hasErr('full_name') ? ' is-invalid' : '' ?>"
-                            id="full_name" name="full_name"
+                            class="form-control<?= $hasErr('nama_lengkap') ? ' is-invalid' : '' ?>"
+                            id="nama_lengkap" name="nama_lengkap"
                             placeholder="Masukkan nama lengkap"
-                            value="<?= esc(old('full_name') ?? '') ?>"
-                            aria-describedby="fullNameFeedback">
-                        <?php if ($hasErr('full_name')): ?>
-                            <div id="fullNameFeedback" class="invalid-feedback d-block"><?= esc($getErr('full_name')) ?></div>
+                            value="<?= esc(old('nama_lengkap') ?? '') ?>"
+                            required aria-describedby="namaFeedback">
+                        <?php if ($hasErr('nama_lengkap')): ?>
+                            <div id="namaFeedback" class="invalid-feedback d-block"><?= esc($getErr('nama_lengkap')) ?></div>
                         <?php endif; ?>
                     </div>
 
-                    <!-- gender -->
+                    <!-- jenis_kelamin -->
                     <div class="col-md-6">
                         <label for="jenis_kelamin" class="form-label">Jenis Kelamin</label>
-                        <?php $oldGender = old('gender'); ?>
-                        <select class="form-select<?= $hasErr('gender') ? ' is-invalid' : '' ?>"
-                            name="gender" id="jenis_kelamin" aria-describedby="genderFeedback">
-                            <option value="" disabled <?= $oldGender ? '' : 'selected' ?>>— Pilih —</option>
-                            <option value="L" <?= $oldGender === 'L' ? 'selected' : '' ?>>Laki-laki</option>
-                            <option value="P" <?= $oldGender === 'P' ? 'selected' : '' ?>>Perempuan</option>
+                        <?php $jkOld = old('jenis_kelamin'); ?>
+                        <select class="form-select<?= $hasErr('jenis_kelamin') ? ' is-invalid' : '' ?>"
+                            name="jenis_kelamin" id="jenis_kelamin" required aria-describedby="jkFeedback">
+                            <option value="" disabled <?= $jkOld ? '' : 'selected' ?>>— Pilih —</option>
+                            <option value="L" <?= $jkOld === 'L' ? 'selected' : '' ?>>Laki-laki</option>
+                            <option value="P" <?= $jkOld === 'P' ? 'selected' : '' ?>>Perempuan</option>
                         </select>
-                        <?php if ($hasErr('gender')): ?>
-                            <div id="genderFeedback" class="invalid-feedback d-block"><?= esc($getErr('gender')) ?></div>
+                        <?php if ($hasErr('jenis_kelamin')): ?>
+                            <div id="jkFeedback" class="invalid-feedback d-block"><?= esc($getErr('jenis_kelamin')) ?></div>
                         <?php endif; ?>
                     </div>
 
-                    <!-- birth_place -->
+                    <!-- tgl_lahir -->
                     <div class="col-md-6">
-                        <label for="tempat_lahir" class="form-label">Tempat Lahir</label>
-                        <input type="text"
-                            class="form-control<?= $hasErr('birth_place') ? ' is-invalid' : '' ?>"
-                            id="tempat_lahir" name="birth_place"
-                            placeholder="Contoh: Jakarta"
-                            value="<?= esc(old('birth_place') ?? '') ?>"
-                            aria-describedby="birthPlaceFeedback">
-                        <?php if ($hasErr('birth_place')): ?>
-                            <div id="birthPlaceFeedback" class="invalid-feedback d-block"><?= esc($getErr('birth_place')) ?></div>
-                        <?php endif; ?>
-                    </div>
-
-                    <!-- birth_date -->
-                    <div class="col-md-6">
-                        <label for="tanggal_lahir" class="form-label">Tanggal Lahir</label>
+                        <label for="tgl_lahir" class="form-label">Tanggal Lahir</label>
                         <input type="date"
-                            class="form-control<?= $hasErr('birth_date') ? ' is-invalid' : '' ?>"
-                            id="tanggal_lahir" name="birth_date"
-                            value="<?= esc(old('birth_date') ?? '') ?>"
-                            aria-describedby="birthDateFeedback">
-                        <?php if ($hasErr('birth_date')): ?>
-                            <div id="birthDateFeedback" class="invalid-feedback d-block"><?= esc($getErr('birth_date')) ?></div>
+                            class="form-control<?= $hasErr('tgl_lahir') ? ' is-invalid' : '' ?>"
+                            id="tgl_lahir" name="tgl_lahir"
+                            value="<?= esc(old('tgl_lahir') ?? '') ?>"
+                            required aria-describedby="tglFeedback">
+                        <?php if ($hasErr('tgl_lahir')): ?>
+                            <div id="tglFeedback" class="invalid-feedback d-block"><?= esc($getErr('tgl_lahir')) ?></div>
                         <?php endif; ?>
                     </div>
 
-                    <!-- address -->
+                    <!-- no_telp -->
+                    <div class="col-md-6">
+                        <label for="no_telp" class="form-label">No. Handphone / WA</label>
+                        <input type="tel"
+                            class="form-control<?= $hasErr('no_telp') ? ' is-invalid' : '' ?>"
+                            id="no_telp" name="no_telp"
+                            value="<?= esc(old('no_telp') ?? '') ?>"
+                            placeholder="08xxxxxxxxxx"
+                            required minlength="8" maxlength="20" pattern="\d{8,20}" inputmode="numeric"
+                            aria-describedby="telpFeedback">
+                        <?php if ($hasErr('no_telp')): ?>
+                            <div id="telpFeedback" class="invalid-feedback d-block"><?= esc($getErr('no_telp')) ?></div>
+                        <?php endif; ?>
+                    </div>
+
+                    <!-- alamat -->
                     <div class="col-12">
                         <label for="alamat" class="form-label">Alamat</label>
-                        <textarea class="form-control<?= $hasErr('address') ? ' is-invalid' : '' ?>"
-                            id="alamat" name="address" rows="3"
+                        <textarea class="form-control<?= $hasErr('alamat') ? ' is-invalid' : '' ?>"
+                            id="alamat" name="alamat" rows="3"
                             placeholder="Tulis alamat lengkap"
-                            aria-describedby="addressFeedback"><?= esc(old('address') ?? '') ?></textarea>
-                        <?php if ($hasErr('address')): ?>
-                            <div id="addressFeedback" class="invalid-feedback d-block"><?= esc($getErr('address')) ?></div>
+                            aria-describedby="alamatFeedback"><?= esc(old('alamat') ?? '') ?></textarea>
+                        <?php if ($hasErr('alamat')): ?>
+                            <div id="alamatFeedback" class="invalid-feedback d-block"><?= esc($getErr('alamat')) ?></div>
                         <?php endif; ?>
                     </div>
 
-                    <!-- parent_name -->
+                    <!-- foto -->
                     <div class="col-md-6">
-                        <label for="nama_ortu" class="form-label">Nama Orang Tua/Wali</label>
-                        <input type="text"
-                            class="form-control<?= $hasErr('parent_name') ? ' is-invalid' : '' ?>"
-                            id="nama_ortu" name="parent_name"
-                            placeholder="Nama wali utama"
-                            value="<?= esc(old('parent_name') ?? '') ?>"
-                            aria-describedby="parentNameFeedback">
-                        <?php if ($hasErr('parent_name')): ?>
-                            <div id="parentNameFeedback" class="invalid-feedback d-block"><?= esc($getErr('parent_name')) ?></div>
-                        <?php endif; ?>
-                    </div>
-
-                    <!-- phone -->
-                    <div class="col-md-6">
-                        <label for="no_hp" class="form-label">No. HP / WhatsApp</label>
-                        <input type="tel"
-                            class="form-control<?= $hasErr('phone') ? ' is-invalid' : '' ?>"
-                            id="no_hp" name="phone"
-                            placeholder="08xxxxxxxxxx"
-                            value="<?= esc(old('phone') ?? '') ?>"
-                            inputmode="tel" pattern="[0-9]*"
-                            aria-describedby="phoneFeedback">
-                        <?php if ($hasErr('phone')): ?>
-                            <div id="phoneFeedback" class="invalid-feedback d-block"><?= esc($getErr('phone')) ?></div>
-                        <?php endif; ?>
-                    </div>
-
-                    <!-- photo -->
-                    <div class="col-md-6">
-                        <label for="pas_photo" class="form-label">Pas Foto</label>
+                        <label for="foto" class="form-label">Pas Foto</label>
                         <div class="input-group">
                             <input type="file"
-                                class="form-control<?= $hasErr('photo') ? ' is-invalid' : '' ?>"
-                                id="pas_photo" name="photo" accept="image/png,image/jpeg"
-                                aria-describedby="photoFeedback">
-                            <label class="input-group-text" for="pas_photo">
+                                class="form-control<?= $hasErr('foto') ? ' is-invalid' : '' ?>"
+                                id="foto" name="foto" accept="image/jpeg,image/png"
+                                aria-describedby="fotoFeedback">
+                            <label class="input-group-text" for="foto">
                                 <i class="fa-solid fa-upload me-2"></i> Upload
                             </label>
                         </div>
                         <div class="form-text">Format JPG/PNG, maks. ±2MB.</div>
-                        <?php if ($hasErr('photo')): ?>
-                            <div id="photoFeedback" class="invalid-feedback d-block"><?= esc($getErr('photo')) ?></div>
+                        <?php if ($hasErr('foto')): ?>
+                            <div id="fotoFeedback" class="invalid-feedback d-block"><?= esc($getErr('foto')) ?></div>
                         <?php endif; ?>
                     </div>
 
@@ -277,6 +250,21 @@
                         <div class="avatar-preview ms-md-auto">
                             <img id="previewPhoto" src="<?= base_url('assets/img/user.png') ?>" alt="Preview" class="avatar-80 rounded">
                         </div>
+                    </div>
+
+                    <!-- status_active -->
+                    <div class="col-md-6">
+                        <label class="form-label d-block">Status Akun</label>
+                        <input type="hidden" name="status_active" value="0">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input<?= $hasErr('status_active') ? ' is-invalid' : '' ?>"
+                                type="checkbox" id="status_active" name="status_active" value="1"
+                                <?= old('status_active', '1') == '1' ? 'checked' : '' ?>>
+                            <label class="form-check-label" for="status_active">Aktif</label>
+                        </div>
+                        <?php if ($hasErr('status_active')): ?>
+                            <div class="invalid-feedback d-block"><?= esc($getErr('status_active')) ?></div>
+                        <?php endif; ?>
                     </div>
                 </div>
 
@@ -292,7 +280,7 @@
                         <i class="fa-solid fa-rotate-left me-2"></i> Reset
                     </button>
 
-                    <a href="<?= base_url('operator/data-siswa') ?>" class="btn btn-dark rounded-pill">
+                    <a href="<?= base_url('operator/data-guru') ?>" class="btn btn-dark rounded-pill">
                         <i class="fa-solid fa-arrow-left me-2"></i> Kembali
                     </a>
                 </div>

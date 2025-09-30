@@ -107,13 +107,22 @@ $nisnKey = urlencode((string)($siswa['nisn'] ?? ''));
                 action="<?= site_url('operator/edit-siswa/' . $nisnKey) ?>"
                 method="post"
                 enctype="multipart/form-data"
-                autocomplete="off">
+                autocomplete="off"
+                novalidate>
                 <?= csrf_field() ?>
                 <input type="hidden" name="_method" value="PUT">
+
                 <!-- simpan foto lama untuk fallback di controller bila tidak upload baru -->
                 <input type="hidden" name="photo_old" value="<?= esc($siswa['photo'] ?? '', 'attr') ?>">
                 <!-- kalau perlu deteksi perubahan NISN -->
                 <input type="hidden" name="nisn_original" value="<?= esc($siswa['nisn'] ?? '', 'attr') ?>">
+
+                <?php
+                // Ambil error per-field dari flash session (controller: ->with('errors', $this->validator->getErrors()))
+                $errors = session('errors') ?? [];
+                $hasErr = fn(string $f) => isset($errors[$f]);
+                $getErr = fn(string $f) => $errors[$f] ?? '';
+                ?>
 
                 <div class="row g-3 mb-3">
                     <!-- user (readonly + hidden agar tetap terkirim) -->
@@ -121,112 +130,133 @@ $nisnKey = urlencode((string)($siswa['nisn'] ?? ''));
                         <label class="form-label">User</label>
                         <input type="text" class="form-control" value="<?= esc($siswa['user_name'] ?? ($siswa['full_name'] ?? '—')) ?>" readonly>
                         <input type="hidden" name="user_id" value="<?= esc($siswa['user_id'] ?? '', 'attr') ?>">
-                        <?php if ($v->hasError('user_id')): ?>
-                            <div class="invalid-feedback d-block"><?= esc($v->getError('user_id')) ?></div>
+                        <?php if ($hasErr('user_id')): ?>
+                            <div class="invalid-feedback d-block"><?= esc($getErr('user_id')) ?></div>
                         <?php endif; ?>
                     </div>
 
-                    <!-- NISN (boleh diedit—kalau mau kunci, jadikan readonly + tambahkan hidden nisn_current) -->
+                    <!-- NISN -->
                     <div class="col-md-6">
                         <label for="nisn" class="form-label">NISN</label>
-                        <input type="text"
-                            class="form-control<?= $v->hasError('nisn') ? ' is-invalid' : '' ?>"
+                        <input
+                            type="text"
+                            class="form-control<?= $hasErr('nisn') ? ' is-invalid' : '' ?>"
                             id="nisn" name="nisn"
                             value="<?= esc(old('nisn', $siswa['nisn'] ?? '')) ?>"
-                            required maxlength="16" inputmode="numeric" pattern="\d{8,16}">
-                        <?php if ($v->hasError('nisn')): ?>
-                            <div class="invalid-feedback d-block"><?= esc($v->getError('nisn')) ?></div>
+                            required
+                            maxlength="16"
+                            inputmode="numeric"
+                            pattern="\d{8,16}"
+                            aria-describedby="nisnFeedback">
+                        <?php if ($hasErr('nisn')): ?>
+                            <div id="nisnFeedback" class="invalid-feedback d-block"><?= esc($getErr('nisn')) ?></div>
                         <?php endif; ?>
                     </div>
 
-                    <!-- Nama -->
+                    <!-- Nama Lengkap -->
                     <div class="col-md-6">
                         <label for="full_name" class="form-label">Nama Lengkap</label>
-                        <input type="text"
-                            class="form-control<?= $v->hasError('full_name') ? ' is-invalid' : '' ?>"
+                        <input
+                            type="text"
+                            class="form-control<?= $hasErr('full_name') ? ' is-invalid' : '' ?>"
                             id="full_name" name="full_name"
                             value="<?= esc(old('full_name', $siswa['full_name'] ?? '')) ?>"
-                            required>
-                        <?php if ($v->hasError('full_name')): ?>
-                            <div class="invalid-feedback d-block"><?= esc($v->getError('full_name')) ?></div>
+                            placeholder="Masukan nama lengkap.."
+                            required
+                            aria-describedby="fullNameFeedback">
+                        <?php if ($hasErr('full_name')): ?>
+                            <div id="fullNameFeedback" class="invalid-feedback d-block"><?= esc($getErr('full_name')) ?></div>
                         <?php endif; ?>
                     </div>
 
-                    <!-- Gender -->
+                    <!-- Jenis Kelamin -->
                     <div class="col-md-6">
                         <label for="gender" class="form-label">Jenis Kelamin</label>
                         <?php $gOld = old('gender', $siswa['gender'] ?? ''); ?>
-                        <select class="form-select<?= $v->hasError('gender') ? ' is-invalid' : '' ?>" id="gender" name="gender" required>
+                        <select
+                            class="form-select<?= $hasErr('gender') ? ' is-invalid' : '' ?>"
+                            id="gender" name="gender" required aria-describedby="genderFeedback">
                             <option value="" disabled <?= $gOld ? '' : 'selected' ?>>— Pilih —</option>
                             <option value="L" <?= $gOld === 'L' ? 'selected' : '' ?>>Laki-laki</option>
                             <option value="P" <?= $gOld === 'P' ? 'selected' : '' ?>>Perempuan</option>
                         </select>
-                        <?php if ($v->hasError('gender')): ?>
-                            <div class="invalid-feedback d-block"><?= esc($v->getError('gender')) ?></div>
+                        <?php if ($hasErr('gender')): ?>
+                            <div id="genderFeedback" class="invalid-feedback d-block"><?= esc($getErr('gender')) ?></div>
                         <?php endif; ?>
                     </div>
 
-                    <!-- Tempat lahir -->
+                    <!-- Tempat Lahir -->
                     <div class="col-md-6">
                         <label for="birth_place" class="form-label">Tempat Lahir</label>
-                        <input type="text"
-                            class="form-control<?= $v->hasError('birth_place') ? ' is-invalid' : '' ?>"
+                        <input
+                            type="text"
+                            class="form-control<?= $hasErr('birth_place') ? ' is-invalid' : '' ?>"
                             id="birth_place" name="birth_place"
                             value="<?= esc(old('birth_place', $siswa['birth_place'] ?? '')) ?>"
-                            required>
-                        <?php if ($v->hasError('birth_place')): ?>
-                            <div class="invalid-feedback d-block"><?= esc($v->getError('birth_place')) ?></div>
+                            required
+                            aria-describedby="birthPlaceFeedback">
+                        <?php if ($hasErr('birth_place')): ?>
+                            <div id="birthPlaceFeedback" class="invalid-feedback d-block"><?= esc($getErr('birth_place')) ?></div>
                         <?php endif; ?>
                     </div>
 
-                    <!-- Tanggal lahir -->
+                    <!-- Tanggal Lahir -->
                     <div class="col-md-6">
                         <label for="birth_date" class="form-label">Tanggal Lahir</label>
-                        <input type="date"
-                            class="form-control<?= $v->hasError('birth_date') ? ' is-invalid' : '' ?>"
+                        <input
+                            type="date"
+                            class="form-control<?= $hasErr('birth_date') ? ' is-invalid' : '' ?>"
                             id="birth_date" name="birth_date"
                             value="<?= esc(old('birth_date', $siswa['birth_date'] ?? '')) ?>"
-                            required>
-                        <?php if ($v->hasError('birth_date')): ?>
-                            <div class="invalid-feedback d-block"><?= esc($v->getError('birth_date')) ?></div>
+                            required
+                            aria-describedby="birthDateFeedback">
+                        <?php if ($hasErr('birth_date')): ?>
+                            <div id="birthDateFeedback" class="invalid-feedback d-block"><?= esc($getErr('birth_date')) ?></div>
                         <?php endif; ?>
                     </div>
 
                     <!-- Alamat -->
                     <div class="col-12">
                         <label for="address" class="form-label">Alamat</label>
-                        <textarea class="form-control<?= $v->hasError('address') ? ' is-invalid' : '' ?>"
+                        <textarea
+                            class="form-control<?= $hasErr('address') ? ' is-invalid' : '' ?>"
                             id="address" name="address" rows="3"
-                            placeholder="Tulis alamat lengkap"><?= esc(old('address', $siswa['address'] ?? '')) ?></textarea>
-                        <?php if ($v->hasError('address')): ?>
-                            <div class="invalid-feedback d-block"><?= esc($v->getError('address')) ?></div>
+                            placeholder="Tulis alamat lengkap"
+                            aria-describedby="addressFeedback"><?= esc(old('address', $siswa['address'] ?? '')) ?></textarea>
+                        <?php if ($hasErr('address')): ?>
+                            <div id="addressFeedback" class="invalid-feedback d-block"><?= esc($getErr('address')) ?></div>
                         <?php endif; ?>
                     </div>
 
-                    <!-- Orang tua -->
+                    <!-- Nama Orang Tua/Wali -->
                     <div class="col-md-6">
                         <label for="parent_name" class="form-label">Nama Orang Tua/Wali</label>
-                        <input type="text"
-                            class="form-control<?= $v->hasError('parent_name') ? ' is-invalid' : '' ?>"
+                        <input
+                            type="text"
+                            class="form-control<?= $hasErr('parent_name') ? ' is-invalid' : '' ?>"
                             id="parent_name" name="parent_name"
                             value="<?= esc(old('parent_name', $siswa['parent_name'] ?? '')) ?>"
-                            required>
-                        <?php if ($v->hasError('parent_name')): ?>
-                            <div class="invalid-feedback d-block"><?= esc($v->getError('parent_name')) ?></div>
+                            required
+                            aria-describedby="parentNameFeedback">
+                        <?php if ($hasErr('parent_name')): ?>
+                            <div id="parentNameFeedback" class="invalid-feedback d-block"><?= esc($getErr('parent_name')) ?></div>
                         <?php endif; ?>
                     </div>
 
                     <!-- Phone -->
                     <div class="col-md-6">
                         <label for="phone" class="form-label">No. HP / WhatsApp</label>
-                        <input type="tel"
-                            class="form-control<?= $v->hasError('phone') ? ' is-invalid' : '' ?>"
+                        <input
+                            type="tel"
+                            class="form-control<?= $hasErr('phone') ? ' is-invalid' : '' ?>"
                             id="phone" name="phone"
                             value="<?= esc(old('phone', $siswa['phone'] ?? '')) ?>"
                             placeholder="08xxxxxxxxxx"
-                            required minlength="8" maxlength="20" pattern="\d{8,20}" inputmode="numeric">
-                        <?php if ($v->hasError('phone')): ?>
-                            <div class="invalid-feedback d-block"><?= esc($v->getError('phone')) ?></div>
+                            required minlength="8" maxlength="20"
+                            pattern="\d{8,20}" inputmode="numeric"
+                            aria-describedby="phoneFeedback">
+                        <?php if ($hasErr('phone')): ?>
+                            <div id="phoneFeedback" class="invalid-feedback d-block"><?= esc($getErr('phone')) ?></div>
                         <?php endif; ?>
                     </div>
 
@@ -234,17 +264,19 @@ $nisnKey = urlencode((string)($siswa['nisn'] ?? ''));
                     <div class="col-md-6">
                         <label for="photo" class="form-label">Pas Foto (opsional)</label>
                         <div class="input-group">
-                            <input type="file"
-                                class="form-control<?= $v->hasError('photo') ? ' is-invalid' : '' ?>"
+                            <input
+                                type="file"
+                                class="form-control<?= $hasErr('photo') ? ' is-invalid' : '' ?>"
                                 id="photo" name="photo"
-                                accept=".jpg,.jpeg,.png,image/jpeg,image/png">
+                                accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+                                aria-describedby="photoFeedback">
                             <label class="input-group-text" for="photo">
                                 <i class="fa-solid fa-upload me-2"></i> Ganti
                             </label>
                         </div>
                         <div class="form-text">JPG/PNG maks. 2MB. Kosongkan jika tidak ingin mengganti.</div>
-                        <?php if ($v->hasError('photo')): ?>
-                            <div class="invalid-feedback d-block"><?= esc($v->getError('photo')) ?></div>
+                        <?php if ($hasErr('photo')): ?>
+                            <div id="photoFeedback" class="invalid-feedback d-block"><?= esc($getErr('photo')) ?></div>
                         <?php endif; ?>
                     </div>
 
@@ -274,6 +306,7 @@ $nisnKey = urlencode((string)($siswa['nisn'] ?? ''));
                     </a>
                 </div>
             </form>
+
         </div>
     </div>
 </div>
