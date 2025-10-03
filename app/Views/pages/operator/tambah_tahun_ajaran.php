@@ -1,7 +1,7 @@
 <?= $this->extend('layout/main') ?>
 
 <?= $this->section('content') ?>
-<!-- CSS kecil -->
+
 <style>
     .page-title {
         font-weight: 800
@@ -39,13 +39,6 @@
         color: #fff
     }
 
-    .avatar-80 {
-        width: 80px;
-        height: 80px;
-        object-fit: cover;
-        border: 1px solid #e5e7eb
-    }
-
     .form-control:focus,
     .form-select:focus {
         box-shadow: 0 0 0 .2rem rgba(37, 99, 235, .15);
@@ -54,14 +47,13 @@
 
     .btn[disabled],
     .form-control[disabled],
-    .form-select[disabled],
-    textarea[disabled] {
+    .form-select[disabled] {
         cursor: not-allowed;
         opacity: .75
     }
 
     .form-lock {
-        position: relative;
+        position: relative
     }
 
     .form-lock::after {
@@ -69,36 +61,33 @@
         position: absolute;
         inset: 0;
         background: rgba(255, 255, 255, .4);
-        /* blok interaksi tanpa disabled */
-        pointer-events: auto;
+        pointer-events: auto
     }
 </style>
+
 <div class="container-fluid px-4 page-section">
-    <!-- Header -->
     <div class="d-sm-flex align-items-center justify-content-between mb-3">
         <div>
-            <h1 class="mt-4 page-title"><?= esc($sub_judul) ?></h1>
+            <h1 class="mt-4 page-title"><?= esc($sub_judul ?? 'Tambah Tahun Ajaran') ?></h1>
             <ol class="breadcrumb breadcrumb-modern mb-0">
                 <li class="breadcrumb-item"><a href="<?= base_url('operator/dashboard') ?>">Dashboard</a></li>
-                <li class="breadcrumb-item active"><?= esc($sub_judul) ?></li>
+                <li class="breadcrumb-item active"><?= esc($sub_judul ?? 'Tambah Tahun Ajaran') ?></li>
             </ol>
         </div>
     </div>
 
-    <!-- Card -->
     <div class="card card-elevated mb-3">
         <div class="card-header-modern">
             <div class="title-wrap">
-                <i class="fa-solid fa-user-plus me-2"></i> Form Tambah Guru
+                <i class="fa-solid fa-calendar-plus me-2"></i> Form Tambah Tahun Ajaran
             </div>
         </div>
 
         <div class="card-body">
-            <form id="formTambahUser"
-                action="<?= site_url('operator/tambah-user') ?>"
-                method="post"
-                autocomplete="off"
-                novalidate>
+            <form id="formTahunAjaran"
+                action="<?= site_url('operator/tambah/tahun-ajaran') ?>"
+                method="post" autocomplete="off" novalidate>
+
                 <?php
                 $errors = session('errors') ?? [];
                 $hasErr = fn($f) => isset($errors[$f]);
@@ -108,85 +97,76 @@
                 <?= csrf_field() ?>
 
                 <div class="row g-3 mb-3">
-                    <!-- username -->
+                    <!-- Tahun (format 2024/2025) -->
                     <div class="col-md-6">
-                        <label for="username" class="form-label">Username</label>
+                        <label for="tahun" class="form-label">Tahun</label>
                         <input
                             type="text"
-                            class="form-control<?= $hasErr('username') ? ' is-invalid' : '' ?>"
-                            id="username" name="username"
-                            placeholder="Masukkan username"
-                            value="<?= esc(old('username') ?? '') ?>"
-                            maxlength="50"
-                            autocapitalize="off"
-                            spellcheck="false"
-                            aria-describedby="usernameFeedback">
-                        <?php if ($hasErr('username')): ?>
-                            <div id="usernameFeedback" class="invalid-feedback d-block">
-                                <?= esc($getErr('username')) ?>
+                            class="form-control<?= $hasErr('tahun') ? ' is-invalid' : '' ?>"
+                            id="tahun" name="tahun"
+                            placeholder="Contoh: 2024/2025"
+                            value="<?= esc(old('tahun') ?? '') ?>"
+                            maxlength="9" pattern="^\d{4}/\d{4}$"
+                            inputmode="numeric" aria-describedby="tahunFeedback">
+                        <div class="form-text">Gunakan format <strong>YYYY/YYYY</strong> (mis. 2024/2025).</div>
+                        <?php if ($hasErr('tahun')): ?>
+                            <div id="tahunFeedback" class="invalid-feedback d-block">
+                                <?= esc($getErr('tahun')) ?>
                             </div>
                         <?php endif; ?>
                     </div>
 
-                    <!-- password -->
+                    <!-- Semester -->
                     <div class="col-md-6">
-                        <label for="password" class="form-label">Password</label>
-                        <input
-                            type="password"
-                            class="form-control<?= $hasErr('password') ? ' is-invalid' : '' ?>"
-                            id="password" name="password"
-                            placeholder="Masukkan password"
-                            aria-describedby="passwordFeedback">
-                        <?php if ($hasErr('password')): ?>
-                            <div id="passwordFeedback" class="invalid-feedback d-block">
-                                <?= esc($getErr('password')) ?>
-                            </div>
-                        <?php endif; ?>
-                    </div>
-
-                    <!-- email -->
-                    <div class="col-md-6">
-                        <label for="email" class="form-label">Email</label>
-                        <input
-                            type="email"
-                            class="form-control<?= $hasErr('email') ? ' is-invalid' : '' ?>"
-                            id="email" name="email"
-                            value="<?= esc(old('email') ?? '') ?>"
-                            placeholder="nama@domain.com"
-                            autocomplete="email"
-                            inputmode="email"
-                            spellcheck="false"
-                            aria-describedby="emailFeedback">
-                        <?php if ($hasErr('email')): ?>
-                            <div id="emailFeedback" class="invalid-feedback d-block">
-                                <?= esc($getErr('email')) ?>
-                            </div>
-                        <?php endif; ?>
-                    </div>
-
-                    <!-- role -->
-                    <div class="col-md-6">
-                        <label for="role" class="form-label">Role</label>
+                        <label for="semester" class="form-label">Semester</label>
+                        <?php $semOld = old('semester', 'ganjil'); ?>
                         <select
-                            class="form-select<?= $hasErr('role') ? ' is-invalid' : '' ?>"
-                            name="role" id="role" aria-describedby="roleFeedback">
-                            <option value="" disabled <?= old('role') ? '' : 'selected' ?>>— Pilih —</option>
-                            <option value="guru" <?= old('role') === 'guru'     ? 'selected' : '' ?>>Guru</option>
-                            <option value="siswa" <?= old('role') === 'siswa'    ? 'selected' : '' ?>>Siswa</option>
-                            <option value="operator" <?= old('role') === 'operator' ? 'selected' : '' ?>>Operator</option>
-                            <option value="admin" <?= old('role') === 'admin'    ? 'selected' : '' ?>>Admin</option>
+                            class="form-select<?= $hasErr('semester') ? ' is-invalid' : '' ?>"
+                            id="semester" name="semester" aria-describedby="semesterFeedback" required>
+                            <option value="" disabled <?= $semOld ? '' : 'selected' ?>>— Pilih Semester —</option>
+                            <option value="ganjil" <?= $semOld === 'ganjil' ? 'selected' : '' ?>>Ganjil</option>
+                            <option value="genap" <?= $semOld === 'genap'  ? 'selected' : '' ?>>Genap</option>
                         </select>
-                        <?php if ($hasErr('role')): ?>
-                            <div id="roleFeedback" class="invalid-feedback d-block">
-                                <?= esc($getErr('role')) ?>
+                        <?php if ($hasErr('semester')): ?>
+                            <div id="semesterFeedback" class="invalid-feedback d-block">
+                                <?= esc($getErr('semester')) ?>
                             </div>
                         <?php endif; ?>
                     </div>
 
-                    <!-- is_active -->
+                    <!-- Start / End Date -->
                     <div class="col-md-6">
-                        <label class="form-label d-block">Status Akun</label>
-                        <!-- default 0 saat tidak dicentang -->
+                        <label for="start_date" class="form-label">Mulai</label>
+                        <input
+                            type="date"
+                            class="form-control<?= $hasErr('start_date') ? ' is-invalid' : '' ?>"
+                            id="start_date" name="start_date"
+                            value="<?= esc(old('start_date') ?? '') ?>"
+                            aria-describedby="startDateFeedback">
+                        <?php if ($hasErr('start_date')): ?>
+                            <div id="startDateFeedback" class="invalid-feedback d-block">
+                                <?= esc($getErr('start_date')) ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="end_date" class="form-label">Selesai</label>
+                        <input
+                            type="date"
+                            class="form-control<?= $hasErr('end_date') ? ' is-invalid' : '' ?>"
+                            id="end_date" name="end_date"
+                            value="<?= esc(old('end_date') ?? '') ?>"
+                            aria-describedby="endDateFeedback">
+                        <?php if ($hasErr('end_date')): ?>
+                            <div id="endDateFeedback" class="invalid-feedback d-block">
+                                <?= esc($getErr('end_date')) ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+
+                    <!-- Status aktif -->
+                    <div class="col-md-6">
+                        <label class="form-label d-block">Status</label>
                         <input type="hidden" name="is_active" value="0">
                         <div class="form-check form-switch">
                             <input
@@ -215,7 +195,7 @@
                         <i class="fa-solid fa-rotate-left me-2"></i> Reset
                     </button>
 
-                    <a href="<?= base_url('operator/data-user') ?>" class="btn btn-dark rounded-pill">
+                    <a href="<?= base_url('operator/tahun-ajaran') ?>" class="btn btn-dark rounded-pill">
                         <i class="fa-solid fa-arrow-left me-2"></i> Kembali
                     </a>
                 </div>
@@ -223,10 +203,10 @@
         </div>
     </div>
 </div>
-<!-- JS: preview foto, Reset, dan loading state submit -->
+
 <script>
     (function() {
-        const form = document.getElementById('formTambahSiswa');
+        const form = document.getElementById('formTahunAjaran');
         const btnSubmit = document.getElementById('btnSubmit');
         const btnText = btnSubmit?.querySelector('.btn-text');
 
@@ -235,16 +215,14 @@
                 btnText.innerHTML =
                     '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Menyimpan...';
             }
-            // Cukup disable tombol submit
             btnSubmit.disabled = true;
-
-            // Tambahkan overlay pengunci (tanpa disabled field)
             form.classList.add('form-lock');
 
-            // Pastikan CSRF tidak tersentuh
+            // pastikan CSRF tidak disabled
             const csrf = form.querySelector('input[name="<?= csrf_token() ?>"]');
             if (csrf) csrf.disabled = false;
         });
     })();
 </script>
+
 <?= $this->endSection() ?>
