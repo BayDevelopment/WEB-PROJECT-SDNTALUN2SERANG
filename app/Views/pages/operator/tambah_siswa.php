@@ -83,9 +83,6 @@
                 <li class="breadcrumb-item active"><?= esc($sub_judul) ?></li>
             </ol>
         </div>
-        <div class="text-muted small mt-3 mt-sm-0">
-            Total Siswa: <strong><?= isset($d_siswa) ? number_format(count($d_siswa), 0, ',', '.') : 0 ?></strong>
-        </div>
     </div>
 
     <!-- Card -->

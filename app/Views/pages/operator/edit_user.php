@@ -1,7 +1,6 @@
 <?= $this->extend('layout/main') ?>
-
 <?= $this->section('content') ?>
-<!-- CSS kecil -->
+
 <style>
     .page-title {
         font-weight: 800
@@ -61,7 +60,7 @@
     }
 
     .form-lock {
-        position: relative;
+        position: relative
     }
 
     .form-lock::after {
@@ -69,18 +68,19 @@
         position: absolute;
         inset: 0;
         background: rgba(255, 255, 255, .4);
-        /* blok interaksi tanpa disabled */
-        pointer-events: auto;
+        pointer-events: auto
     }
 </style>
+
 <div class="container-fluid px-4 page-section">
     <!-- Header -->
     <div class="d-sm-flex align-items-center justify-content-between mb-3">
         <div>
-            <h1 class="mt-4 page-title"><?= esc($sub_judul) ?></h1>
+            <h1 class="mt-4 page-title"><?= esc($sub_judul ?? 'Edit Siswa') ?></h1>
             <ol class="breadcrumb breadcrumb-modern mb-0">
-                <li class="breadcrumb-item"><a href="<?= base_url('operator/dashboard') ?>">Dashboard</a></li>
-                <li class="breadcrumb-item active"><?= esc($sub_judul) ?></li>
+                <li class="breadcrumb-item"><a href="<?= base_url('/') ?>">Dashboard</a></li>
+                <li class="breadcrumb-item"><a href="<?= base_url('operator/data-user') ?>">Data User</a></li>
+                <li class="breadcrumb-item active">Edit</li>
             </ol>
         </div>
     </div>
@@ -89,116 +89,107 @@
     <div class="card card-elevated mb-3">
         <div class="card-header-modern">
             <div class="title-wrap">
-                <i class="fa-solid fa-user-plus me-2"></i> Form Tambah Guru
+                <i class="fa-solid fa-user-pen me-2"></i> Form Edit User
             </div>
         </div>
 
         <div class="card-body">
-            <form id="formTambahUser"
-                action="<?= site_url('operator/tambah-user') ?>"
+            <form id="formEditUser"
+                action="<?= site_url('operator/edit-user/' . $d_user['id_user']) ?>"
                 method="post"
+                enctype="multipart/form-data"
                 autocomplete="off"
                 novalidate>
+                <?= csrf_field() ?>
+                <input type="hidden" name="_method" value="PUT">
+
                 <?php
+                // Ambil error per-field dari flash session (controller: ->with('errors', $this->validator->getErrors()))
                 $errors = session('errors') ?? [];
-                $hasErr = fn($f) => isset($errors[$f]);
-                $getErr = fn($f) => $errors[$f] ?? '';
+                $hasErr = fn(string $f) => isset($errors[$f]);
+                $getErr = fn(string $f) => $errors[$f] ?? '';
                 ?>
 
-                <?= csrf_field() ?>
-
                 <div class="row g-3 mb-3">
-                    <!-- username -->
+                    <!-- Username -->
                     <div class="col-md-6">
                         <label for="username" class="form-label">Username</label>
                         <input
                             type="text"
                             class="form-control<?= $hasErr('username') ? ' is-invalid' : '' ?>"
                             id="username" name="username"
+                            value="<?= esc(old('username', $d_user['username'] ?? '')) ?>"
                             placeholder="Masukkan username"
-                            value="<?= esc(old('username') ?? '') ?>"
-                            maxlength="50"
-                            autocapitalize="off"
-                            spellcheck="false"
+                            required minlength="3" maxlength="50"
                             aria-describedby="usernameFeedback">
                         <?php if ($hasErr('username')): ?>
-                            <div id="usernameFeedback" class="invalid-feedback d-block">
-                                <?= esc($getErr('username')) ?>
-                            </div>
+                            <div id="usernameFeedback" class="invalid-feedback d-block"><?= esc($getErr('username')) ?></div>
                         <?php endif; ?>
                     </div>
 
-                    <!-- password -->
+                    <!-- Password (opsional) -->
                     <div class="col-md-6">
-                        <label for="password" class="form-label">Password</label>
+                        <label for="password" class="form-label">Password (opsional)</label>
                         <input
                             type="password"
                             class="form-control<?= $hasErr('password') ? ' is-invalid' : '' ?>"
                             id="password" name="password"
-                            placeholder="Masukkan password"
+                            placeholder="Kosongkan jika tidak ingin mengubah"
                             aria-describedby="passwordFeedback">
+                        <div class="form-text">Minimal 6 karakter bila diisi.</div>
                         <?php if ($hasErr('password')): ?>
-                            <div id="passwordFeedback" class="invalid-feedback d-block">
-                                <?= esc($getErr('password')) ?>
-                            </div>
+                            <div id="passwordFeedback" class="invalid-feedback d-block"><?= esc($getErr('password')) ?></div>
                         <?php endif; ?>
                     </div>
 
-                    <!-- email -->
+                    <!-- Role -->
+                    <div class="col-md-6">
+                        <label for="role" class="form-label">Role</label>
+                        <?php $roleOld = old('role', $d_user['role'] ?? ''); ?>
+                        <select
+                            class="form-select<?= $hasErr('role') ? ' is-invalid' : '' ?>"
+                            id="role" name="role" required aria-describedby="roleFeedback">
+                            <option value="" disabled <?= $roleOld ? '' : 'selected' ?>>— Pilih —</option>
+                            <option value="siswa" <?= $roleOld === 'siswa'    ? 'selected' : '' ?>>Siswa</option>
+                            <option value="guru" <?= $roleOld === 'guru'     ? 'selected' : '' ?>>Guru</option>
+                            <option value="operator" <?= $roleOld === 'operator' ? 'selected' : '' ?>>Operator</option>
+                        </select>
+                        <?php if ($hasErr('role')): ?>
+                            <div id="roleFeedback" class="invalid-feedback d-block"><?= esc($getErr('role')) ?></div>
+                        <?php endif; ?>
+                    </div>
+
+                    <!-- Email -->
                     <div class="col-md-6">
                         <label for="email" class="form-label">Email</label>
                         <input
                             type="email"
                             class="form-control<?= $hasErr('email') ? ' is-invalid' : '' ?>"
                             id="email" name="email"
-                            value="<?= esc(old('email') ?? '') ?>"
+                            value="<?= esc(old('email', $d_user['email'] ?? '')) ?>"
                             placeholder="nama@domain.com"
-                            autocomplete="email"
-                            inputmode="email"
-                            spellcheck="false"
+                            required autocomplete="email" inputmode="email"
                             aria-describedby="emailFeedback">
                         <?php if ($hasErr('email')): ?>
-                            <div id="emailFeedback" class="invalid-feedback d-block">
-                                <?= esc($getErr('email')) ?>
-                            </div>
+                            <div id="emailFeedback" class="invalid-feedback d-block"><?= esc($getErr('email')) ?></div>
+                        <?php else: ?>
+                            <div id="emailFeedback" class="form-text">Masukkan email aktif yang valid.</div>
                         <?php endif; ?>
                     </div>
 
-                    <!-- role -->
-                    <div class="col-md-6">
-                        <label for="role" class="form-label">Role</label>
-                        <select
-                            class="form-select<?= $hasErr('role') ? ' is-invalid' : '' ?>"
-                            name="role" id="role" aria-describedby="roleFeedback">
-                            <option value="" disabled <?= old('role') ? '' : 'selected' ?>>— Pilih —</option>
-                            <option value="guru" <?= old('role') === 'guru'     ? 'selected' : '' ?>>Guru</option>
-                            <option value="siswa" <?= old('role') === 'siswa'    ? 'selected' : '' ?>>Siswa</option>
-                            <option value="operator" <?= old('role') === 'operator' ? 'selected' : '' ?>>Operator</option>
-                            <option value="admin" <?= old('role') === 'admin'    ? 'selected' : '' ?>>Admin</option>
-                        </select>
-                        <?php if ($hasErr('role')): ?>
-                            <div id="roleFeedback" class="invalid-feedback d-block">
-                                <?= esc($getErr('role')) ?>
-                            </div>
-                        <?php endif; ?>
-                    </div>
-
-                    <!-- is_active -->
+                    <!-- Status Aktif -->
                     <div class="col-md-6">
                         <label class="form-label d-block">Status Akun</label>
-                        <!-- default 0 saat tidak dicentang -->
                         <input type="hidden" name="is_active" value="0">
                         <div class="form-check form-switch">
                             <input
                                 class="form-check-input<?= $hasErr('is_active') ? ' is-invalid' : '' ?>"
                                 type="checkbox" id="is_active" name="is_active" value="1"
-                                <?= old('is_active', '1') == '1' ? 'checked' : '' ?>>
+                                <?= old('is_active', (string)($d_user['is_active'] ?? '1')) == '1' ? 'checked' : '' ?>>
                             <label class="form-check-label" for="is_active">Aktif</label>
                         </div>
                         <?php if ($hasErr('is_active')): ?>
-                            <div class="invalid-feedback d-block">
-                                <?= esc($getErr('is_active')) ?>
-                            </div>
+                            <div class="invalid-feedback d-block"><?= esc($getErr('is_active')) ?></div>
                         <?php endif; ?>
                     </div>
                 </div>
@@ -206,13 +197,7 @@
                 <!-- Actions -->
                 <div class="d-flex gap-2 mt-4">
                     <button type="submit" id="btnSubmit" class="btn btn-gradient rounded-pill">
-                        <span class="btn-text">
-                            <i class="fa-solid fa-floppy-disk me-2"></i> Simpan
-                        </span>
-                    </button>
-
-                    <button type="reset" id="btnReset" class="btn btn-outline-secondary rounded-pill">
-                        <i class="fa-solid fa-rotate-left me-2"></i> Reset
+                        <span class="btn-text"><i class="fa-solid fa-floppy-disk me-2"></i> Update</span>
                     </button>
 
                     <a href="<?= base_url('operator/data-user') ?>" class="btn btn-dark rounded-pill">
@@ -223,28 +208,48 @@
         </div>
     </div>
 </div>
-<!-- JS: preview foto, Reset, dan loading state submit -->
+
+<!-- JS: preview foto, reset foto, dan loading state submit -->
 <script>
     (function() {
-        const form = document.getElementById('formTambahSiswa');
+        const form = document.getElementById('formEditUser');
         const btnSubmit = document.getElementById('btnSubmit');
         const btnText = btnSubmit?.querySelector('.btn-text');
+        const inputFile = document.getElementById('photo');
+        const imgPrev = document.getElementById('previewPhoto');
+        const btnResetFoto = document.getElementById('btnResetFoto');
 
+        // Preview saat pilih foto
+        inputFile?.addEventListener('change', function() {
+            const f = this.files?.[0];
+            if (f) {
+                const url = URL.createObjectURL(f);
+                imgPrev.src = url;
+            } else {
+                imgPrev.src = originalSrc;
+            }
+        });
+
+        // Reset ke foto lama
+        btnResetFoto?.addEventListener('click', function() {
+            if (inputFile) inputFile.value = '';
+            imgPrev.src = originalSrc;
+        });
+
+        // Submit overlay (tanpa disable field agar nilai terkirim)
         form?.addEventListener('submit', function() {
             if (btnText) {
                 btnText.innerHTML =
                     '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Menyimpan...';
             }
-            // Cukup disable tombol submit
             btnSubmit.disabled = true;
-
-            // Tambahkan overlay pengunci (tanpa disabled field)
             form.classList.add('form-lock');
 
-            // Pastikan CSRF tidak tersentuh
+            // pastikan CSRF tidak pernah disabled
             const csrf = form.querySelector('input[name="<?= csrf_token() ?>"]');
             if (csrf) csrf.disabled = false;
         });
     })();
 </script>
+
 <?= $this->endSection() ?>

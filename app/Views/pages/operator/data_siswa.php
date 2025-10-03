@@ -12,12 +12,14 @@
         <div>
             <h1 class="mt-4 page-title"><?= esc($sub_judul) ?></h1>
             <ol class="breadcrumb breadcrumb-modern mb-0">
-                <li class="breadcrumb-item"><a href="<?= base_url() ?>">Home</a></li>
+                <li class="breadcrumb-item"><a href="<?= base_url('/') ?>">Dashboard</a></li>
                 <li class="breadcrumb-item active"><?= esc($sub_judul) ?></li>
             </ol>
         </div>
         <div class="text-muted small mt-3 mt-sm-0">
-            Total Siswa: <strong><?= isset($d_siswa) ? number_format(count($d_siswa), 0, ',', '.') : 0 ?></strong>
+            Total Siswa: <strong><?= number_format($totalSiswa ?? 0, 0, ',', '.') ?></strong>
+            &nbsp;|&nbsp; Aktif: <strong class="text-success"><?= number_format($SiswaAktif ?? 0, 0, ',', '.') ?></strong>
+            &nbsp;|&nbsp; Nonaktif: <strong class="text-muted"><?= number_format($SiswaNonAktif ?? 0, 0, ',', '.') ?></strong>
         </div>
     </div>
 

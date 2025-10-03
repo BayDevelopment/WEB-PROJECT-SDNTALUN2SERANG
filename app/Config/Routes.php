@@ -53,9 +53,32 @@ $routes->group('operator', ['filter' => ['auth', 'role:operator']], static funct
     $routes->get('data-user',  'OperatorController::data_user');
     $routes->get('tambah-user',  'OperatorController::page_tambah_user');
     $routes->post('tambah-user',  'OperatorController::aksi_insert_user');
+    $routes->get('edit-user/(:num)',  'OperatorController::page_edit_user/$1');
+    $routes->PUT('edit-user/(:num)',  'OperatorController::aksi_update_user/$1');
+    $routes->get('detail-user/(:num)',  'OperatorController::page_detail_user/$1');
 
     // data guru
     $routes->get('data-guru',  'OperatorController::data_guru');
     $routes->get('tambah-guru',  'OperatorController::page_tambah_guru');
     $routes->post('tambah-guru',  'OperatorController::aksi_tambah_guru');
+    $routes->get('edit-guru/(:num)',  'OperatorController::page_edit_guru/$1');
+    $routes->PUT('edit-guru/(:num)',  'OperatorController::aksi_update_guru/$1');
+    $routes->get('detail-guru/(:num)',  'OperatorController::page_detail_guru/$1');
+
+    // data mapel
+    $routes->get('matpel',  'OperatorController::data_matpel');
+    $routes->get('matpel/tambah',  'OperatorController::page_tambah_matpel');
+    $routes->post('matpel/tambah',  'OperatorController::aksi_insert_matpel');
+    $routes->get('matpel/edit/(:num)',  'OperatorController::page_edit_matpel/$1');
+    $routes->PUT('matpel/edit/(:num)',  'OperatorController::aksi_update_matpel/$1');
+    $routes->get('matpel/detail/(:num)',  'OperatorController::page_detail_matpel/$1');
+    $routes->get('matpel/delete/(:num)',  'OperatorController::aksi_delete_matpel/$1');
+
+    // DATA TAHUN AJARAN
+    $routes->get('tahun-ajaran',  'OperatorController::data_tahun_ajaran');
+    $routes->get('tambah/tahun-ajaran',  'OperatorController::tambah_tahun_ajaran');
+    $routes->post('tambah/tahun-ajaran',  'OperatorController::aksi_tahun_ajaran');
+    $routes->get('edit/tahun-ajaran/(:num)',  'OperatorController::page_edit_tahun_ajaran/$1');
+    $routes->PUT('edit/tahun-ajaran/(:num)',  'OperatorController::aksi_edit_tahun_ajaran/$1');
+    $routes->get('detail/tahun-ajaran/(:num)',  'OperatorController::page_edit_detail_tahun_ajaran/$1');
 });

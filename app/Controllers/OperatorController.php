@@ -4,7 +4,9 @@ namespace App\Controllers;
 
 use App\Controllers\BaseController;
 use App\Models\ModelGuru;
+use App\Models\ModelMatPel;
 use App\Models\SiswaModel;
+use App\Models\TahunAjaranModel;
 use App\Models\UserModel;
 use CodeIgniter\HTTP\ResponseInterface;
 
@@ -13,11 +15,15 @@ class OperatorController extends BaseController
     protected $UserModel;
     protected $SiswaModel;
     protected $ModelGuru;
+    protected $ModelMatpel;
+    protected $TahunAjaran;
     public function __construct()
     {
         $this->UserModel = new UserModel();
         $this->SiswaModel = new SiswaModel();
         $this->ModelGuru = new ModelGuru();
+        $this->ModelMatpel = new ModelMatPel();
+        $this->TahunAjaran = new TahunAjaranModel();
     }
     public function index()
     {
@@ -30,65 +36,87 @@ class OperatorController extends BaseController
     }
     public function Data_siswa()
     {
-        // ambil semua siswa (boleh dari model, atau bisa array statis)
-        $allSiswa = $this->SiswaModel->findAll();
-
-        // ambil query string
+        // --- Ambil query string untuk filter UI ---
         $q      = trim((string) $this->request->getGet('q'));
         $gender = trim((string) $this->request->getGet('gender'));
 
-        // filter manual (tanpa query builder DB)
-        $filtered = array_filter($allSiswa, function ($row) use ($q, $gender) {
+        // --- Ambil data siswa + status aktif user lewat JOIN ---
+        // Catatan: sesuaikan nama tabel user: 'tb_user' vs 'tb_users' sesuai skema kamu
+        $rows = $this->SiswaModel
+            ->select('tb_siswa.*, u.username AS user_name, u.is_active AS user_active')
+            ->join('tb_users AS u', 'u.id_user = tb_siswa.user_id', 'left') // ganti ke tb_users jika memang pakai 's'
+            ->findAll();
+
+        // --- Filter manual sesuai input pencarian ---
+        $filtered = array_values(array_filter($rows, function (array $row) use ($q, $gender) {
             $match = true;
 
             if ($q !== '') {
-                $nama = strtolower($row['full_name'] ?? '');
-                $nisn = strtolower($row['nisn'] ?? '');
-                $keyword = strtolower($q);
-                $match = (strpos($nama, $keyword) !== false || strpos($nisn, $keyword) !== false);
+                $nama    = mb_strtolower((string)($row['full_name'] ?? ''), 'UTF-8');
+                $nisn    = mb_strtolower((string)($row['nisn'] ?? ''), 'UTF-8');
+                $keyword = mb_strtolower($q, 'UTF-8');
+                $match   = (strpos($nama, $keyword) !== false) || (strpos($nisn, $keyword) !== false);
             }
 
             if ($match && $gender !== '') {
-                // samakan format gender di array dan filter
-                $g = strtolower($row['gender'] ?? '');
-                $match = ($g === strtolower($gender));
+                $g = mb_strtolower((string)($row['gender'] ?? ''), 'UTF-8');
+                $match = ($g === mb_strtolower($gender, 'UTF-8'));
             }
 
             return $match;
-        });
+        }));
 
+        // --- Hitung aktif/nonaktif dari hasil filter (bisa ganti ke $rows jika mau total keseluruhan) ---
+        $SiswaAktif = 0;
+        $SiswaNonAktif = 0;
+        foreach ($filtered as $r) {
+            $flag = (int)($r['user_active'] ?? 0);
+            if ($flag === 1) $SiswaAktif++;
+            else $SiswaNonAktif++;
+        }
+
+        // --- Kirim ke view ---
         $data = [
-            'title'     => 'Data siswa | SDN Talun 2 Kota Serang',
-            'sub_judul' => 'Data Siswa/i',
-            'nav_link'  => 'Data Siswa',
-            'd_siswa'   => $filtered,
-            'q'         => $q,
-            'gender'    => $gender,
+            'title'         => 'Data siswa | SDN Talun 2 Kota Serang',
+            'sub_judul'     => 'Data Siswa/i',
+            'nav_link'      => 'Data Siswa',
+            'd_siswa'       => $filtered,          // berisi tb_siswa.* + user_name + user_active
+            'q'             => $q,
+            'gender'        => $gender,
+            'SiswaAktif'    => $SiswaAktif,        // jumlah siswa aktif (berdasarkan user.is_active)
+            'SiswaNonAktif' => $SiswaNonAktif,     // jumlah siswa nonaktif
+            'totalSiswa'    => count($filtered),   // total (setelah filter)
         ];
 
         return view('pages/operator/data_siswa', $data);
     }
 
+
     public function page_tambah_siswa()
     {
+        // User Siswa yang AKTIF dan belum punya data di tb_siswa
         $belumIsi = $this->UserModel
-            ->select('tb_users.*')
-            ->join('tb_siswa s', 's.id_siswa = tb_users.id_user', 'left')
-            ->where('tb_users.role', 'siswa')
-            ->where('tb_users.is_active', 1)
-            ->where('s.id_siswa', null)   // builder akan jadi "IS NULL"
-            ->orderBy('tb_users.username', 'ASC')
+            ->select('u.id_user, u.username, u.email, u.role, u.is_active')
+            ->from('tb_users AS u')                               // ganti ke 'tb_users AS u' jika tabelmu pakai "s"
+            ->join('tb_siswa AS s', 's.user_id = u.id_user', 'left')
+            ->where('u.role', 'siswa')
+            ->where('u.is_active', 1)
+            ->where('s.id_siswa', null)                          // builder -> IS NULL
+            ->orderBy('u.username', 'ASC')
             ->findAll();
 
         $data = [
-            'title' => 'Tambah siswa | SDN Talun 2 Kota Serang',
-            'sub_judul' => 'Tambah Siswa/i',
-            'nav_link' => 'Tambah Siswa',
-            'd_user' => $belumIsi,
-            'validation' => \Config\Services::validation(),
+            'title'         => 'Tambah siswa | SDN Talun 2 Kota Serang',
+            'sub_judul'     => 'Tambah Siswa/i',
+            'nav_link'      => 'Tambah Siswa',
+            'd_user'        => $belumIsi,                        // list user yang bisa dipilih
+            'eligibleCount' => is_countable($belumIsi) ? count($belumIsi) : 0,
+            'validation'    => \Config\Services::validation(),
         ];
+
         return view('pages/operator/tambah_siswa', $data);
     }
+
     // === ACTION: Insert data siswa ===
     public function aksi_insert_siswa()
     {
@@ -265,7 +293,7 @@ class OperatorController extends BaseController
         $data = [
             'title'      => 'Edit siswa | SDN Talun 2 Kota Serang',
             'sub_judul'  => 'Edit Siswa/i',
-            'nav_link'   => 'Data Siswa',
+            'nav_link'   => 'Edit Siswa',
             'siswa'      => $siswa,                           // ← ada 'user_id' dari SiswaModel
             'validation' => \Config\Services::validation(),
         ];
@@ -934,6 +962,201 @@ class OperatorController extends BaseController
         session()->setFlashdata('sweet_success', 'Data guru berhasil ditambahkan.');
         return redirect()->to(base_url('operator/data-guru'));
     }
+    public function page_edit_guru(string $nip)
+    {
+        // Ambil siswa dari SiswaModel saja (user_id ikut dari sini)
+        $guru = $this->ModelGuru
+            ->select('tb_guru.*, tb_users.username AS user_name') // opsional join untuk tampilan nama user
+            ->join('tb_users', 'tb_users.id_user = tb_guru.user_id', 'left')
+            ->where('tb_guru.nip', $nip)
+            ->first();
+
+        if (! $guru) {
+            session()->setFlashdata('sweet_error', 'Data guru tidak ditemukan.');
+            return redirect()->to(base_url('operator/data-guru'));
+        }
+
+        $data = [
+            'title'      => 'Edit Guru | SDN Talun 2 Kota Serang',
+            'sub_judul'  => 'Edit Guru',
+            'nav_link'   => 'Edit Guru',
+            'd_guru'      => $guru,                           // ← ada 'user_id' dari SiswaModel
+            'validation' => \Config\Services::validation(),
+        ];
+
+        return view('pages/operator/edit_guru', $data);
+    }
+    public function aksi_update_guru(string $nipParam)
+    {
+        $nip = urldecode($nipParam);
+
+        // 1) Ambil record existing
+        $existing = $this->ModelGuru->where('nip', $nip)->first();
+        if (! $existing) {
+            session()->setFlashdata('sweet_error', 'Data guru tidak ditemukan.');
+            return redirect()->to(base_url('operator/data-guru'));
+        }
+
+        $idGuru = (int)($existing['id_guru'] ?? 0);
+        $userId = (int)($existing['user_id'] ?? 0); // LOCK user_id dari DB (abaikan input view)
+
+        // 2) VALIDASI
+        $rules = [
+            'nip' => [
+                'rules'  => "required|min_length[8]|max_length[30]|is_unique[tb_guru.nip,id_guru,{$idGuru}]",
+                'errors' => [
+                    'required'   => 'NIP wajib diisi.',
+                    'min_length' => 'NIP minimal 8 digit.',
+                    'max_length' => 'NIP maksimal 30 digit.',
+                    'is_unique'  => 'NIP sudah terdaftar.',
+                ],
+            ],
+            'nama_lengkap' => [
+                'rules'  => 'required|min_length[3]',
+                'errors' => [
+                    'required'   => 'Nama lengkap wajib diisi.',
+                    'min_length' => 'Nama lengkap minimal 3 karakter.',
+                ],
+            ],
+            'jenis_kelamin' => [
+                'rules'  => 'required|in_list[L,P]',
+                'errors' => [
+                    'required' => 'Jenis kelamin wajib dipilih.',
+                    'in_list'  => 'Jenis kelamin harus L (Laki-laki) atau P (Perempuan).',
+                ],
+            ],
+            'tgl_lahir' => [
+                'rules'  => 'required|valid_date[Y-m-d]',
+                'errors' => [
+                    'required'   => 'Tanggal lahir wajib diisi.',
+                    'valid_date' => 'Format tanggal lahir tidak valid (gunakan YYYY-MM-DD).',
+                ],
+            ],
+            'no_telp' => [
+                'rules'  => 'required|numeric|min_length[8]|max_length[20]',
+                'errors' => [
+                    'required'   => 'No. HP/WhatsApp wajib diisi.',
+                    'numeric'    => 'No. HP/WhatsApp harus berupa angka.',
+                    'min_length' => 'No. HP/WhatsApp minimal 8 digit.',
+                    'max_length' => 'No. HP/WhatsApp maksimal 20 digit.',
+                ],
+            ],
+            'alamat' => [
+                'rules'  => 'permit_empty',
+                'errors' => [],
+            ],
+            'foto' => [
+                'rules'  => 'permit_empty|is_image[foto]|max_size[foto,2048]|ext_in[foto,jpg,jpeg,png]|mime_in[foto,image/jpg,image/jpeg,image/png]',
+                'errors' => [
+                    'is_image' => 'File yang diunggah harus berupa gambar.',
+                    'max_size' => 'Ukuran foto maksimal 2 MB.',
+                    'ext_in'   => 'Ekstensi foto harus jpg, jpeg, atau png.',
+                    'mime_in'  => 'Tipe file foto tidak didukung (harus image/jpg, image/jpeg, atau image/png).',
+                ],
+            ],
+            'status_active' => [
+                'rules'  => 'required|in_list[0,1]',
+                'errors' => [
+                    'required' => 'Status aktif wajib diisi.',
+                    'in_list'  => 'Status aktif hanya boleh 0 (Nonaktif) atau 1 (Aktif).',
+                ],
+            ],
+        ];
+
+
+        if (! $this->validate($rules)) {
+            session()->setFlashdata('sweet_error', 'Validasi gagal. Periksa kembali isian Anda.');
+            return redirect()->back()->withInput()->with('errors', $this->validator->getErrors());
+        }
+
+        // 3) Ambil input (TANPA user_id)
+        $nipNew       = trim((string)$this->request->getPost('nip'));
+        $namaLengkap  = trim((string)$this->request->getPost('nama_lengkap'));
+        $jk           = (string)$this->request->getPost('jenis_kelamin');
+        $tglLahir     = (string)$this->request->getPost('tgl_lahir');
+        $noTelp       = trim((string)$this->request->getPost('no_telp'));
+        $alamat       = trim((string)$this->request->getPost('alamat'));
+        $statusActive = (int)$this->request->getPost('status_active');
+
+        // (opsional) pastikan user masih role guru
+        $user = $this->UserModel->select('id_user, role')->where('id_user', $userId)->first();
+        if (! $user || ($user['role'] ?? '') !== 'guru') {
+            session()->setFlashdata('sweet_error', 'User tidak valid / bukan role guru.');
+            return redirect()->back()->withInput();
+        }
+
+        // 4) Handle foto
+        $uploadDir   = FCPATH . 'assets/img/uploads';
+        $defaultName = 'user.png';
+        if (! is_dir($uploadDir)) @mkdir($uploadDir, 0755, true);
+
+        $fotoFile = $this->request->getFile('foto');
+        $fotoLama = trim((string)($existing['foto'] ?? ''));
+        $fotoBaru = $fotoLama ?: $defaultName;
+
+        if ($fotoFile && $fotoFile->isValid() && ! $fotoFile->hasMoved()) {
+            $ext = strtolower($fotoFile->getExtension() ?: 'jpg');
+            $fotoBaru = 'guru_' . $userId . '_' . time() . '.' . $ext;
+            try {
+                $fotoFile->move($uploadDir, $fotoBaru);
+                if ($fotoLama && $fotoLama !== $defaultName && $fotoLama !== $fotoBaru) {
+                    $oldPath = $uploadDir . DIRECTORY_SEPARATOR . $fotoLama;
+                    if (is_file($oldPath)) @unlink($oldPath);
+                }
+            } catch (\Throwable $e) {
+                session()->setFlashdata('sweet_error', 'Gagal menyimpan foto: ' . $e->getMessage());
+                return redirect()->back()->withInput();
+            }
+        }
+
+        // 5) Update (user_id DIPAKSA dari DB)
+        $dataUpdate = [
+            'user_id'       => $userId,      // <- kunci di server
+            'nip'           => $nipNew,
+            'nama_lengkap'  => $namaLengkap,
+            'jenis_kelamin' => $jk,
+            'tgl_lahir'     => $tglLahir,
+            'no_telp'       => $noTelp,
+            'alamat'        => $alamat,
+            'foto'          => $fotoBaru,
+            'status_active' => $statusActive,
+        ];
+
+        try {
+            $this->ModelGuru->update($idGuru, $dataUpdate);
+        } catch (\Throwable $e) {
+            session()->setFlashdata('sweet_error', 'Gagal mengubah data: ' . $e->getMessage());
+            return redirect()->back()->withInput();
+        }
+
+        session()->setFlashdata('sweet_success', 'Data guru berhasil diperbarui.');
+        return redirect()->to(base_url('operator/data-guru'));
+    }
+    public function page_detail_guru(string $nipRaw)
+    {
+        $nip = urldecode(trim($nipRaw));
+
+        $guru = $this->ModelGuru
+            ->select('g.*, u.username AS user_name')
+            ->from('tb_guru AS g')
+            ->join('tb_users AS u', 'u.id_user = g.user_id', 'left') // sesuaikan jika tabelmu bernama tb_users
+            ->where('g.nip', $nip)
+            ->first();
+
+        if (! $guru) {
+            session()->setFlashdata('sweet_error', 'Data guru tidak ditemukan.');
+            return redirect()->to(base_url('operator/data-guru'));
+        }
+
+        return view('pages/operator/detail_guru', [
+            'title'     => 'Detail Guru | SDN Talun 2 Kota Serang',
+            'sub_judul' => 'Detail Guru',
+            'nav_link'  => 'Data Guru',
+            'guru'      => $guru,
+        ]);
+    }
+
+
 
 
     // DATA USER
@@ -1084,5 +1307,750 @@ class OperatorController extends BaseController
 
         session()->setFlashdata('sweet_success', 'User baru berhasil ditambahkan.');
         return redirect()->to(base_url('operator/data-user'));
+    }
+    public function page_edit_user(string $idUserRaw)
+    {
+        // id_user numerik; jangan pakai nip lagi
+        $idUser = (int) $idUserRaw;
+
+        // Ambil user dari UserModel (sesuaikan nama tabel/model-mu)
+        $user = $this->UserModel
+            ->select('*')              // atau sebutkan kolom yang kamu butuhkan
+            ->where('id_user', $idUser)
+            ->first();
+
+        if (! $user) {
+            session()->setFlashdata('sweet_error', 'Data user tidak ditemukan.');
+            return redirect()->to(base_url('operator/data-user'));
+        }
+
+        $data = [
+            'title'      => 'Edit User | SDN Talun 2 Kota Serang',
+            'sub_judul'  => 'Edit User',
+            'nav_link'   => 'Edit User',
+            'd_user'     => $user,
+            'validation' => \Config\Services::validation(),
+        ];
+
+        return view('pages/operator/edit_user', $data);
+    }
+    public function aksi_update_user(string $idUserRaw)
+    {
+        $idUser = (int) $idUserRaw;
+
+        // --- Cek data user existing ---
+        $existing = $this->UserModel->where('id_user', $idUser)->first();
+        if (! $existing) {
+            session()->setFlashdata('sweet_error', 'Data user tidak ditemukan.');
+            return redirect()->to(base_url('operator/data-user'));
+        }
+
+        // --- Rules + pesan error (ID) ---
+        $rules = [
+            'username' => [
+                'rules'  => "required|min_length[3]|max_length[50]|is_unique[tb_users.username,id_user,{$idUser}]",
+                'errors' => [
+                    'required'   => 'Username wajib diisi.',
+                    'min_length' => 'Username minimal 3 karakter.',
+                    'max_length' => 'Username maksimal 50 karakter.',
+                    'is_unique'  => 'Username sudah digunakan.',
+                ],
+            ],
+            'password' => [
+                'rules'  => 'permit_empty|min_length[6]',
+                'errors' => [
+                    'min_length' => 'Password minimal 6 karakter.',
+                ],
+            ],
+            'email' => [
+                'rules'  => "required|valid_email|is_unique[tb_users.email,id_user,{$idUser}]",
+                'errors' => [
+                    'required'   => 'Email wajib diisi.',
+                    'valid_email' => 'Format email tidak valid.',
+                    'is_unique'  => 'Email sudah digunakan.',
+                ],
+            ],
+            'role' => [
+                'rules'  => 'required|in_list[operator,siswa,guru,admin]',
+                'errors' => [
+                    'required' => 'Role wajib dipilih.',
+                    'in_list'  => 'Role harus salah satu dari: operator, siswa, guru, admin.',
+                ],
+            ],
+            'is_active' => [
+                'rules'  => 'required|in_list[0,1]',
+                'errors' => [
+                    'required' => 'Status aktif wajib diisi.',
+                    'in_list'  => 'Status aktif hanya boleh 0 (Nonaktif) atau 1 (Aktif).',
+                ],
+            ],
+        ];
+
+        if (! $this->validate($rules)) {
+            session()->setFlashdata('sweet_error', 'Validasi gagal. Periksa kembali isian Anda.');
+            return redirect()->back()->withInput()->with('errors', $this->validator->getErrors());
+        }
+
+        // --- Ambil input ---
+        $username = trim((string) $this->request->getPost('username'));
+        $email    = strtolower(trim((string) $this->request->getPost('email')));
+        $role     = (string) $this->request->getPost('role');
+        $isActive = (int) $this->request->getPost('is_active');
+        $password = (string) $this->request->getPost('password'); // opsional
+
+        // --- Siapkan data update ---
+        $dataUpdate = [
+            'username'  => $username,
+            'email'     => $email,
+            'role'      => $role,
+            'is_active' => $isActive,
+        ];
+
+        // Update password hanya jika diisi
+        if ($password !== '') {
+            $dataUpdate['password'] = password_hash($password, PASSWORD_ARGON2ID);
+        }
+
+        // --- Eksekusi update ---
+        try {
+            $this->UserModel->update($idUser, $dataUpdate);
+        } catch (\Throwable $e) {
+            session()->setFlashdata('sweet_error', 'Gagal mengubah data user: ' . $e->getMessage());
+            return redirect()->back()->withInput();
+        }
+
+        session()->setFlashdata('sweet_success', 'Data user berhasil diperbarui.');
+        return redirect()->to(base_url('operator/data-user'));
+    }
+    public function page_detail_user(string $idUserRaw)
+    {
+        $idUser = (int) urldecode(trim($idUserRaw)); // id numerik
+
+        // Ambil data user dari UserModel
+        $user = $this->UserModel
+            ->select('id_user, username, email, role, is_active, created_at, updated_at')
+            ->where('id_user', $idUser)
+            ->first();
+
+        if (! $user) {
+            session()->setFlashdata('sweet_error', 'Data user tidak ditemukan.');
+            return redirect()->to(base_url('operator/data-user'));
+        }
+
+        return view('pages/operator/detail_user', [
+            'title'     => 'Detail User | SDN Talun 2 Kota Serang',
+            'sub_judul' => 'Detail User',
+            'nav_link'  => 'Data User',
+            'user'      => $user,
+        ]);
+    }
+
+    // DATA MATPEL
+    public function data_matpel()
+    {
+        $AllMapel = $this->ModelMatpel->findAll();
+        $data = [
+            'title'     => 'Data Mata Pelajaran | SDN Talun 2 Kota Serang',
+            'sub_judul' => 'Data Mata Pelajaran',
+            'nav_link'  => 'Data Mata Pelajaran',
+            'd_mapel' => $AllMapel
+        ];
+        return view('pages/operator/data_matpel', $data);
+    }
+
+    // ====== PAGE: Tambah MatPel ======
+    public function page_tambah_matpel()
+    {
+        // Ambil semua (kalau perlu untuk list/cek) — opsional
+        $all = $this->ModelMatpel->orderBy('id_mapel', 'ASC')->findAll();
+
+        // Hitung saran kode berikutnya dari data AKTIF
+        $kodeSaran = $this->suggestNextKode(); // e.g. "MP007" atau "003" tergantung data
+
+        $data = [
+            'title'      => 'Tambah MatPel | SDN Talun 2 Kota Serang',
+            'sub_judul'  => 'Tambah Mata Pelajaran',
+            'nav_link'   => 'Data Matpel',
+            'd_mapel'    => $all,
+            'kode_saran' => $kodeSaran,  // Kirim ke view, bisa jadikan default value
+        ];
+        return view('pages/operator/tambah_mapel', $data);
+    }
+
+    // ====== AKSI: Insert MatPel ======
+    public function aksi_insert_matpel()
+    {
+        $rules = [
+            'nama' => [
+                'rules'  => 'required|min_length[3]',
+                'errors' => [
+                    'required'   => 'Nama mata pelajaran wajib diisi.',
+                    'min_length' => 'Nama mata pelajaran minimal 3 karakter.',
+                ]
+            ],
+            'is_active'  => [
+                'rules'  => 'required|in_list[0,1]',
+                'errors' => [
+                    'required' => 'Status aktif wajib dipilih.',
+                    'in_list'  => 'Status aktif hanya 0 atau 1.',
+                ]
+            ],
+        ];
+
+        if (! $this->validate($rules)) {
+            session()->setFlashdata('sweet_error', 'Validasi gagal. Periksa kembali isian Anda.');
+            return redirect()->back()->withInput()->with('errors', $this->validator->getErrors());
+        }
+
+        $nama  = trim((string)$this->request->getPost('nama'));
+        $aktif = (int)$this->request->getPost('is_active');
+
+        // KODE DIBUAT DI SERVER (prefix MP + urut)
+        $kodeFinal = $this->suggestNextKode('MP', 3);
+
+        // Safety: pastikan belum pernah dipakai (aktif/nonaktif)
+        $col = 'kode'; // atau 'kode_mapel'
+        $dup = $this->ModelMatpel->where($col, $kodeFinal)->first();
+        if ($dup) {
+            // Sangat jarang terjadi, tapi aman kalau race condition
+            session()->setFlashdata('sweet_error', 'Terjadi bentrok penomoran. Silakan submit ulang.');
+            return redirect()->back()->withInput();
+        }
+
+        try {
+            $this->ModelMatpel->insert([
+                $col         => $kodeFinal,
+                'nama' => $nama,
+                'is_active'  => $aktif,
+            ]);
+        } catch (\Throwable $e) {
+            session()->setFlashdata('sweet_error', 'Gagal menyimpan data: ' . $e->getMessage());
+            return redirect()->back()->withInput();
+        }
+
+        session()->setFlashdata('sweet_success', "Mata pelajaran <b>{$kodeFinal}</b> berhasil ditambahkan.");
+        return redirect()->to(base_url('operator/matpel'));
+    }
+
+    private function suggestNextKode(string $prefixDefault = 'MP', int $padDefault = 3): string
+    {
+        $col = 'kode'; // ganti ke 'kode_mapel' kalau kolommu bernama itu
+
+        $rows = $this->ModelMatpel
+            ->select($col)
+            ->where('is_active', 1)
+            ->like($col, $prefixDefault, 'after')   // hanya kode berawalan "MP"
+            ->findAll();
+
+        $maxNum = 0;
+        $pad    = $padDefault;
+
+        foreach ($rows as $r) {
+            $kode = $this->normalizeKode((string)($r[$col] ?? '')); // trim + strtoupper
+            if (strpos($kode, $prefixDefault) !== 0) continue;
+
+            [$pre, $num, $len] = $this->splitKode($kode); // pecah ke [prefix, angka, panjangAngka]
+            if ($pre !== $prefixDefault) continue;
+
+            if ($num > $maxNum) {
+                $maxNum = $num;
+                $pad    = max($pad, $len); // jaga padding jika ada yang lebih panjang
+            }
+        }
+
+        $nextNum = $maxNum + 1;
+        $numStr  = str_pad((string)$nextNum, $pad, '0', STR_PAD_LEFT);
+        return $prefixDefault . $numStr; // contoh: "MP001"
+    }
+    private function normalizeKode(string $kode): string
+    {
+        return strtoupper(trim($kode));
+    }
+    private function splitKode(string $kode): array
+    {
+        if (preg_match('/^(.*?)(\d+)$/', $kode, $m)) {
+            $pre = $m[1] ?? '';
+            $numStr = $m[2] ?? '';
+            $num = (int)$numStr;
+            $len = strlen($numStr);
+            return [$pre, $num, $len];
+        }
+        return [$kode, 0, 0]; // tidak ada angka di belakang
+    }
+
+    // GET: /operator/edit-matpel/{id}
+    public function page_edit_matpel(string $idRaw)
+    {
+        $id = (int) trim($idRaw);
+
+        // Ambil satu data mapel by id_mapel
+        $mapel = $this->ModelMatpel->where('id_mapel', $id)->first();
+        if (! $mapel) {
+            session()->setFlashdata('sweet_error', 'Mata pelajaran tidak ditemukan.');
+            return redirect()->to(base_url('operator/matpel'));
+        }
+
+        $data = [
+            'title'      => 'Edit MatPel | SDN Talun 2 Kota Serang',
+            'sub_judul'  => 'Edit Mata Pelajaran',
+            'nav_link'   => 'Data Matpel',
+            'mapel'      => $mapel,
+            'validation' => \Config\Services::validation(),
+        ];
+
+        return view('pages/operator/edit_mapel', $data);
+    }
+
+
+    // PUT: /operator/edit-matpel/{id}
+    public function aksi_update_matpel(string $idRaw)
+    {
+        $id = (int) trim($idRaw);
+
+        $existing = $this->ModelMatpel->where('id_mapel', $id)->first();
+        if (! $existing) {
+            session()->setFlashdata('sweet_error', 'Mata pelajaran tidak ditemukan.');
+            return redirect()->to(base_url('operator/matpel'));
+        }
+
+        // Aturan validasi (kolom formulir: kode, nama, is_active)
+        // Catatan: ganti 'kode' & 'nama' di bawah jika kolom DB Anda bernama 'kode_mapel' / 'nama_mapel'.
+        $rules = [
+            'nama' => [
+                'rules'  => 'required|min_length[3]|max_length[100]',
+                'errors' => [
+                    'required'   => 'Nama mata pelajaran wajib diisi.',
+                    'min_length' => 'Nama minimal 3 karakter.',
+                    'max_length' => 'Nama maksimal 100 karakter.',
+                ]
+            ],
+            'is_active' => [
+                'rules'  => 'required|in_list[0,1]',
+                'errors' => [
+                    'required' => 'Status aktif wajib dipilih.',
+                    'in_list'  => 'Status aktif tidak valid.',
+                ]
+            ],
+        ];
+
+        if (! $this->validate($rules)) {
+            session()->setFlashdata('sweet_error', 'Validasi gagal. Periksa kembali isian Anda.');
+            return redirect()->back()->withInput()->with('errors', $this->validator->getErrors());
+        }
+
+        // Ambil input
+        $nama     = trim((string) $this->request->getPost('nama'));
+        $isActive = (int) $this->request->getPost('is_active');
+
+        // (Opsional) Normalisasi/format kode, mis. "MP001" (biarkan apa adanya jika memang boleh diedit manual)
+        // $kode = strtoupper($kode);
+
+        // Update
+        $dataUpdate = [
+            'nama'      => $nama,
+            'is_active' => $isActive,
+        ];
+
+        try {
+            $this->ModelMatpel->update($id, $dataUpdate);
+        } catch (\Throwable $e) {
+            session()->setFlashdata('sweet_error', 'Gagal menyimpan perubahan: ' . $e->getMessage());
+            return redirect()->back()->withInput();
+        }
+
+        session()->setFlashdata('sweet_success', 'Mata pelajaran berhasil diperbarui.');
+        return redirect()->to(base_url('operator/matpel'));
+    }
+    // Controller: Operator.php (contoh)
+    public function page_detail_matpel(string $idRaw)
+    {
+        // Sanitasi & validasi id
+        $id = (int) trim($idRaw);
+        if (!$id) {
+            session()->setFlashdata('sweet_error', 'Parameter tidak valid.');
+            return redirect()->to(base_url('operator/matpel'));
+        }
+
+        // Ambil data mapel by id_mapel
+        $mapel = $this->ModelMatpel
+            ->where('id_mapel', $id)
+            ->first();
+
+        if (! $mapel) {
+            session()->setFlashdata('sweet_error', 'Mata Pelajaran tidak ditemukan.');
+            return redirect()->to(base_url('operator/matpel'));
+        }
+
+        // Kirim ke view
+        return view('pages/operator/detail_mapel', [
+            'title'     => 'Detail MatPel | SDN Talun 2 Kota Serang',
+            'sub_judul' => 'Detail Mata Pelajaran',
+            'nav_link'  => 'Data Matpel',
+            'mapel'     => $mapel, // view sudah menormalkan nama kolom (kode/kode_mapel, nama/nama_mapel)
+        ]);
+    }
+    public function aksi_delete_matpel(string $idRaw)
+    {
+
+        // Sanitasi ID
+        $id = (int) trim($idRaw);
+        if (!$id) {
+            session()->setFlashdata('sweet_error', 'Parameter tidak valid.');
+            return redirect()->to(base_url('operator/matpel'));
+        }
+
+        // Ambil data mapel (untuk validasi & pesan)
+        $row = $this->ModelMatpel
+            ->select('id_mapel, kode, nama, is_active')
+            ->where('id_mapel', $id)
+            ->first();
+
+        if (! $row) {
+            session()->setFlashdata('sweet_error', 'Mata pelajaran tidak ditemukan.');
+            return redirect()->to(base_url('operator/matpel'));
+        }
+
+        // Normalisasi kolom kode/nama (tergantung skema)
+        $kode = (string) ($row['kode'] ?? '');
+        $nama = (string) ($row['nama'] ?? '');
+
+        // Cek relasi: sudah dipakai di tb_guru_mapel?
+        try {
+            $db = \Config\Database::connect();
+            $linked = $db->table('tb_guru_mapel')
+                ->where('id_mapel', $id)
+                ->countAllResults();
+
+            if ($linked > 0) {
+                session()->setFlashdata(
+                    'sweet_error',
+                    'Tidak dapat menghapus karena mata pelajaran ini sudah dipakai pada relasi/penugasan guru.'
+                );
+                return redirect()->to(base_url('operator/matpel'));
+            }
+        } catch (\Throwable $e) {
+            session()->setFlashdata('sweet_error', 'Gagal memeriksa relasi: ' . $e->getMessage());
+            return redirect()->to(base_url('operator/matpel'));
+        }
+
+        // Hapus
+        try {
+            $this->ModelMatpel->delete($id);
+        } catch (\Throwable $e) {
+            session()->setFlashdata('sweet_error', 'Gagal menghapus: ' . $e->getMessage());
+            return redirect()->to(base_url('operator/matpel'));
+        }
+
+        session()->setFlashdata(
+            'sweet_success',
+            'Mata pelajaran' . ($nama ? " <b>{$nama}</b>" : '') . ($kode ? " ({$kode})" : '') . ' berhasil dihapus.'
+        );
+        return redirect()->to(base_url('operator/matpel'));
+    }
+
+    // TAHUN AJARAN 
+    public function data_tahun_ajaran()
+    {
+        $DataTahunAjaranAll = $this->TahunAjaran->findAll();
+        $data = [
+            'title'      => 'Tahun Ajaran | SDN Talun 2 Kota Serang',
+            'sub_judul' => 'Tahun Ajaran',
+            'nav_link'  => 'Tahun Ajaran',
+            'd_TahunAjaran' => $DataTahunAjaranAll
+        ];
+        return view('pages/operator/data_tahun_ajaran', $data);
+    }
+    public function tambah_tahun_ajaran()
+    {
+        $data = [
+            'title'      => 'Tambah Tahun Ajaran | SDN Talun 2 Kota Serang',
+            'sub_judul' => 'Tambah Tahun Ajaran',
+            'nav_link'  => 'Tambah Tahun Ajaran',
+            'validation'    => \Config\Services::validation(),
+
+        ];
+        return view('pages/operator/tambah_tahun_ajaran', $data);
+    }
+    public function aksi_tahun_ajaran()
+    {
+
+        $data = [
+            'tahun'      => trim((string) $this->request->getPost('tahun')),
+            'semester'   => trim((string) $this->request->getPost('semester')),
+            'start_date' => (string) $this->request->getPost('start_date'),
+            'end_date'   => (string) $this->request->getPost('end_date'),
+            // hidden input 0 + switch 1 -> gunakan hadirnya checkbox
+            'is_active'  => $this->request->getPost('is_active') ? 1 : 0,
+        ];
+
+        // Validasi dasar
+        $rules = [
+            'tahun'      => [
+                'label'  => 'Tahun',
+                'rules'  => 'required|regex_match[/^\d{4}\/\d{4}$/]',
+                'errors' => [
+                    'required'    => 'Tahun wajib diisi.',
+                    'regex_match' => 'Format tahun harus YYYY/YYYY (contoh: 2024/2025).',
+                ],
+            ],
+            'semester'   => [
+                'label'  => 'Semester',
+                'rules'  => 'required|in_list[ganjil,genap]',
+                'errors' => [
+                    'required' => 'Semester wajib dipilih.',
+                    'in_list'  => 'Semester tidak valid.',
+                ],
+            ],
+            'start_date' => [
+                'label'  => 'Mulai',
+                'rules'  => 'required|valid_date[Y-m-d]',
+                'errors' => [
+                    'required'  => 'Tanggal mulai wajib diisi.',
+                    'valid_date' => 'Tanggal mulai tidak valid.',
+                ],
+            ],
+            'end_date'   => [
+                'label'  => 'Selesai',
+                'rules'  => 'required|valid_date[Y-m-d]',
+                'errors' => [
+                    'required'  => 'Tanggal selesai wajib diisi.',
+                    'valid_date' => 'Tanggal selesai tidak valid.',
+                ],
+            ],
+            'is_active'  => [
+                'label'  => 'Status',
+                'rules'  => 'permit_empty|in_list[0,1]',
+            ],
+        ];
+
+        if (! $this->validate($rules)) {
+            return redirect()->back()->withInput()->with('errors', $this->validator->getErrors());
+        }
+
+        // Validasi lanjutan (logika bisnis)
+        $errors = [];
+
+        // 1) Tahun ajaran harus berurutan: 2024/2025 -> 2025 = 2024+1
+        [$y1, $y2] = array_map('intval', explode('/', $data['tahun']));
+        if ($y2 !== $y1 + 1) {
+            $errors['tahun'] = 'Tahun ajaran harus berurutan, misal 2024/2025 (tahun kedua = tahun pertama + 1).';
+        }
+
+        // 2) start_date <= end_date
+        if (strtotime($data['start_date']) > strtotime($data['end_date'])) {
+            $errors['end_date'] = 'Tanggal selesai harus sama atau setelah tanggal mulai.';
+        }
+
+        $model = new TahunAjaranModel();
+
+        // 3) Unique kombinasi tahun+semester
+        $exist = $model->where([
+            'tahun'    => $data['tahun'],
+            'semester' => $data['semester'],
+        ])->first();
+
+        if ($exist) {
+            $errors['tahun'] = 'Kombinasi Tahun dan Semester sudah ada.';
+        }
+
+        if (! empty($errors)) {
+            return redirect()->back()->withInput()->with('errors', $errors);
+        }
+
+        // Jika set aktif, nonaktifkan yang lain
+        if ((int) $data['is_active'] === 1) {
+            // Hindari update masal tanpa kondisi tabel
+            $model->where('is_active', 1)->set(['is_active' => 0])->update();
+        }
+
+        // Simpan
+        try {
+            $model->insert($data);
+        } catch (\Throwable $e) {
+            // Jika DB punya UNIQUE KEY (tahun, semester), antisipasi error DB
+            return redirect()->back()->withInput()->with('errors', [
+                'tahun' => 'Gagal menyimpan. Pastikan kombinasi Tahun & Semester belum terdaftar.',
+            ]);
+        }
+
+        return redirect()->to(site_url('operator/tahun-ajaran'))
+            ->with('success', 'Tahun ajaran berhasil ditambahkan.');
+    }
+    public function page_edit_tahun_ajaran(string $idRaw)
+    {
+        $id = (int) trim($idRaw);
+
+        // Ambil satu data mapel by id_mapel
+        $TahunAjaran = $this->TahunAjaran->where('id_tahun_ajaran', $id)->first();
+        if (! $TahunAjaran) {
+            session()->setFlashdata('sweet_error', 'Tahun Ajaran tidak ditemukan.');
+            return redirect()->to(base_url('operator/tahun-ajaran'));
+        }
+
+        $data = [
+            'title'      => 'Edit Tahun Ajaran | SDN Talun 2 Kota Serang',
+            'sub_judul'  => 'Edit Tahun Ajaran',
+            'nav_link'   => 'Data Tahun Ajaran',
+            'd_TahunAjaran'      => $TahunAjaran,
+            'validation' => \Config\Services::validation(),
+        ];
+
+        return view('pages/operator/edit_tahun_ajaran', $data);
+    }
+    // Di controller: app/Controllers/Operator/TahunAjaranController.php
+    // use App\Models\TahunAjaranModel;  // opsional, jika tidak pakai FQCN di bawah
+
+    public function aksi_edit_tahun_ajaran($id = null)
+    {
+        $req = $this->request;
+        $id  = (int) $id;
+
+        if ($id <= 0) {
+            session()->setFlashdata('sweet_error', 'ID tidak valid.');
+            return redirect()->to(base_url('operator/tahun-ajaran'));
+        }
+
+        $model = new \App\Models\TahunAjaranModel();
+
+        // Pastikan data ada
+        $row = $model->where('id_tahun_ajaran', $id)->first();
+        if (! $row) {
+            session()->setFlashdata('sweet_error', 'Data tahun ajaran tidak ditemukan.');
+            return redirect()->to(base_url('operator/tahun-ajaran'));
+        }
+
+        // ---------- RULES ----------
+        $rules = [
+            'tahun' => [
+                'rules'  => 'required|regex_match[/^\d{4}\/\d{4}$/]',
+                'errors' => [
+                    'required'    => 'Tahun wajib diisi.',
+                    'regex_match' => 'Format tahun harus YYYY/YYYY (contoh: 2024/2025).',
+                ]
+            ],
+            'semester' => [
+                'rules'  => 'required|in_list[ganjil,genap]',
+                'errors' => [
+                    'required' => 'Semester wajib dipilih.',
+                    'in_list'  => 'Semester tidak valid.',
+                ]
+            ],
+            'start_date' => [
+                'rules'  => 'required|valid_date[Y-m-d]',
+                'errors' => [
+                    'required'  => 'Tanggal mulai wajib diisi.',
+                    'valid_date' => 'Tanggal mulai tidak valid.',
+                ]
+            ],
+            'end_date' => [
+                'rules'  => 'required|valid_date[Y-m-d]',
+                'errors' => [
+                    'required'  => 'Tanggal selesai wajib diisi.',
+                    'valid_date' => 'Tanggal selesai tidak valid.',
+                ]
+            ],
+            'is_active' => [
+                'rules'  => 'permit_empty|in_list[0,1]',
+                'errors' => [
+                    'in_list' => 'Status aktif hanya boleh 0 (nonaktif) atau 1 (aktif).',
+                ]
+            ],
+        ];
+
+        if (! $this->validate($rules)) {
+            session()->setFlashdata('sweet_error', 'Validasi gagal. Periksa kembali isian Anda.');
+            return redirect()->back()->withInput()
+                ->with('errors', $this->validator->getErrors());
+        }
+
+        // ---------- AMBIL INPUT ----------
+        $tahun     = trim((string) $req->getPost('tahun'));
+        $semester  = strtolower(trim((string) $req->getPost('semester'))); // ganjil/genap
+        $startDate = (string) $req->getPost('start_date');
+        $endDate   = (string) $req->getPost('end_date');
+        $isActive  = (int) $req->getPost('is_active'); // 0/1 (hidden 0 + switch 1)
+
+        $dataUpdate = [
+            'tahun'      => $tahun,
+            'semester'   => $semester,
+            'start_date' => $startDate,
+            'end_date'   => $endDate,
+            'is_active'  => $isActive,
+        ];
+
+        // ---------- VALIDASI LANJUTAN (LOGIKA BISNIS) ----------
+        $errors = [];
+
+        // 1) Tahun ajaran berurutan: 2024/2025 -> 2025 = 2024 + 1
+        if (preg_match('/^\d{4}\/\d{4}$/', $tahun)) {
+            [$y1, $y2] = array_map('intval', explode('/', $tahun));
+            if ($y2 !== $y1 + 1) {
+                $errors['tahun'] = 'Tahun ajaran harus berurutan, misal 2024/2025 (tahun kedua = tahun pertama + 1).';
+            }
+        }
+
+        // 2) start_date <= end_date
+        if (strtotime($startDate) > strtotime($endDate)) {
+            $errors['end_date'] = 'Tanggal selesai harus sama atau setelah tanggal mulai.';
+        }
+
+        // 3) Unik kombinasi tahun + semester (kecuali baris saat ini)
+        $dup = $model->where('tahun', $tahun)
+            ->where('semester', $semester)
+            ->where('id_tahun_ajaran !=', $id)
+            ->first();
+
+        if ($dup) {
+            // bisa ditempelkan di 'tahun' atau 'semester'
+            $errors['tahun'] = 'Kombinasi Tahun dan Semester sudah terdaftar.';
+        }
+
+        if (! empty($errors)) {
+            session()->setFlashdata('sweet_error', 'Validasi gagal. Periksa kembali isian Anda.');
+            return redirect()->back()->withInput()->with('errors', $errors);
+        }
+
+        // Jika set aktif, nonaktifkan yang lain
+        if ((int) $isActive === 1) {
+            $model->where('id_tahun_ajaran !=', $id)->set(['is_active' => 0])->update();
+        }
+
+        // ---------- UPDATE ----------
+        try {
+            $model->update($id, $dataUpdate);
+        } catch (\Throwable $e) {
+            // Antisipasi error DB (mis. unique index)
+            session()->setFlashdata('sweet_error', 'Gagal memperbarui data: ' . $e->getMessage());
+            return redirect()->back()->withInput();
+        }
+
+        session()->setFlashdata('sweet_success', 'Tahun ajaran berhasil diperbarui.');
+        return redirect()->to(base_url('operator/tahun-ajaran'));
+    }
+
+    public function page_edit_detail_tahun_ajaran($id = null)
+    {
+        $id = (int) $id;
+        if (!$id) {
+            session()->setFlashdata('sweet_error', 'ID tidak valid.');
+            return redirect()->to(base_url('operator/tahun-ajaran'));
+        }
+
+        $model = new TahunAjaranModel();
+        $row = $model->where('id_tahun_ajaran', $id)->first();
+
+        if (! $row) {
+            session()->setFlashdata('sweet_error', 'Data tahun ajaran tidak ditemukan.');
+            return redirect()->to(base_url('operator/tahun-ajaran'));
+        }
+
+        $data = [
+            'title'      => 'Detail Tahun Ajaran | SDN Talun 2 Kota Serang',
+            'sub_judul'      => 'Detail Tahun Ajaran',
+            'nav_link'      => 'Detail Tahun Ajaran',
+            'd_TahunAjaran'  => $row,
+        ];
+
+        return view('pages/operator/detail_tahun_ajaran', $data);
     }
 }

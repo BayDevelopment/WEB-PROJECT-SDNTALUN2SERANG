@@ -42,6 +42,15 @@
                         <a class="nav-link <?= ($nav_link === 'Data Guru' ? 'active' : '') ?> mb-2" href="<?= base_url('operator/data-guru') ?>">
                             <i class="fa-solid fa-chalkboard-user me-2"></i> Data Guru
                         </a>
+                        <a class="nav-link <?= ($nav_link === 'Data Mata Pelajaran' ? 'active' : '') ?> mb-2"
+                            href="<?= base_url('operator/matpel') ?>">
+                            <i class="fa-solid fa-book-open me-2"></i> Data MatPel
+                        </a>
+
+                        <a class="nav-link <?= ($nav_link === 'Data Tahun Ajaran' ? 'active' : '') ?> mb-2"
+                            href="<?= base_url('operator/tahun-ajaran') ?>">
+                            <i class="fa-solid fa-calendar-days me-2"></i> Data Tahun Ajaran
+                        </a>
                     </nav>
                 </div>
 

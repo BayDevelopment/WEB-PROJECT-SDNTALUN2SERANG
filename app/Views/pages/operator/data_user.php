@@ -12,13 +12,28 @@
         <div>
             <h1 class="mt-4 page-title"><?= esc($sub_judul) ?></h1>
             <ol class="breadcrumb breadcrumb-modern mb-0">
-                <li class="breadcrumb-item"><a href="<?= base_url() ?>">Home</a></li>
+                <li class="breadcrumb-item"><a href="<?= base_url('/') ?>">Dashboard</a></li>
                 <li class="breadcrumb-item active"><?= esc($sub_judul) ?></li>
             </ol>
         </div>
+        <?php
+        $total = is_countable($d_user ?? null) ? count($d_user) : 0;
+
+        $aktif = 0;
+        if (!empty($d_user) && is_array($d_user)) {
+            foreach ($d_user as $u) {
+                $flag = (string)($u['is_active'] ?? $u['status_active'] ?? '0');
+                if ($flag === '1') $aktif++;
+            }
+        }
+        $nonaktif = max($total - $aktif, 0);
+        ?>
         <div class="text-muted small mt-3 mt-sm-0">
-            Total User: <strong><?= isset($d_user) ? number_format(count($d_user), 0, ',', '.') : 0 ?></strong>
+            Total User: <strong><?= number_format($total, 0, ',', '.') ?></strong>
+            &nbsp;|&nbsp; Aktif: <strong class="text-success"><?= number_format($aktif, 0, ',', '.') ?></strong>
+            &nbsp;|&nbsp; Nonaktif: <strong class="text-muted"><?= number_format($nonaktif, 0, ',', '.') ?></strong>
         </div>
+
     </div>
 
     <div class="card card-elevated mb-3">
