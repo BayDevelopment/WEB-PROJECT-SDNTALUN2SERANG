@@ -46,10 +46,14 @@
                             href="<?= base_url('operator/matpel') ?>">
                             <i class="fa-solid fa-book-open me-2"></i> Data MatPel
                         </a>
+                        <a class="nav-link <?= ($nav_link === 'Data Kelas' ? 'active' : '') ?> mb-2"
+                            href="<?= base_url('operator/kelas') ?>">
+                            <i class="fa-solid fa-person-booth me-2"></i> Data Kelas
+                        </a>
 
-                        <a class="nav-link <?= ($nav_link === 'Data Tahun Ajaran' ? 'active' : '') ?> mb-2"
+                        <a class="nav-link <?= ($nav_link === 'Tahun Ajaran' ? 'active' : '') ?> mb-2"
                             href="<?= base_url('operator/tahun-ajaran') ?>">
-                            <i class="fa-solid fa-calendar-days me-2"></i> Data Tahun Ajaran
+                            <i class="fa-solid fa-calendar-days me-2"></i> Tahun Ajaran
                         </a>
                     </nav>
                 </div>
@@ -64,7 +68,7 @@
 
                 <div class="collapse" id="collapseData" data-bs-parent="#sidenavAccordion">
                     <nav class="sb-sidenav-menu-nested nav">
-                        <a class="nav-link" href="<?= base_url('operator/profile') ?>">
+                        <a class="nav-link " href="<?= base_url('operator/laporan/siswa') ?>">
                             <i class="fa-regular fa-id-badge me-2"></i> Data Siswa
                         </a>
                     </nav>
@@ -94,16 +98,16 @@
             <div class="sb-sidenav-menu-heading">Lainnya</div>
 
             <?php if ($role === "operator"): ?>
-                <a class="nav-link collapsed" href="#" data-bs-toggle="collapse" data-bs-target="#collapseLaporan" aria-expanded="false" aria-controls="collapseLaporan">
+                <a class="nav-link collapsed mb-2" href="#" data-bs-toggle="collapse" data-bs-target="#collapseLaporan" aria-expanded="false" aria-controls="collapseLaporan">
                     <div class="sb-nav-link-icon"><i class="fas fa-columns"></i></div>
                     Laporan
                     <div class="sb-sidenav-collapse-arrow"><i class="fas fa-angle-down"></i></div>
                 </a>
                 <div class="collapse" id="collapseLaporan" aria-labelledby="headingOne" data-bs-parent="#sidenavAccordion">
                     <nav class="sb-sidenav-menu-nested nav">
-                        <a class="nav-link text-capitalize" href=""><span><i class="fa-regular fa-id-badge me-2"></i></span> Data siswa</a>
-                        <a class="nav-link text-capitalize" href=""><span><i class="fa-solid fa-chalkboard-user me-2"></i></span> Data Guru</a>
-                        <a class="nav-link text-capitalize" href=""><span><i class="fa-solid fa-trophy kpi-icon me-2"></i></span> Nilai Siswa</a>
+                        <a class="nav-link text-capitalize mb-2 <?= ($nav_link === 'Laporan Data Siswa' ? 'active' : '') ?>" href="<?= base_url('operator/laporan/siswa') ?>"><span><i class="fa-regular fa-id-badge me-2"></i></span> Data siswa</a>
+                        <a class="nav-link text-capitalize mb-2" href=""><span><i class="fa-solid fa-chalkboard-user me-2"></i></span> Data Guru</a>
+                        <a class="nav-link text-capitalize mb-2" href=""><span><i class="fa-solid fa-trophy kpi-icon me-2"></i></span> Nilai Siswa</a>
                     </nav>
                 </div>
             <?php elseif ($role === "guru"): ?>

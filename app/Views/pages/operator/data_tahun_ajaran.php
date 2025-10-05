@@ -73,8 +73,8 @@
                             <?php if (!empty($d_TahunAjaran) && is_array($d_TahunAjaran)): ?>
                                 <?php foreach ($d_TahunAjaran as $m): ?>
                                     <?php
-                                    $id     = (int)($m['id_tahun_ajaran'] ?? $m['id'] ?? 0);
-                                    $kode   = (string)($m['semester'] ?? $m['kode'] ?? '-');          // ganjil/genap
+                                    $id     = (int)($m['id_tahun_ajaran'] ?? 0);
+                                    $kode   = (string)($m['semester'] ?? '-');          // ganjil/genap
                                     $tahun  = (string)($m['tahun'] ?? '-');
 
                                     // Normalisasi status (menerima 1/0, true/false, '1'/'0', 'true'/'false')
@@ -96,10 +96,9 @@
                                         </td>
                                         <td class="text-end">
                                             <div class="btn-group btn-group-sm" role="group" aria-label="Aksi tahun ajaran">
-                                                <a href="#"
-                                                    class="btn btn-outline-danger"
-                                                    onclick="confirmDeleteMatpel('<?= esc((string)$id, 'js') ?>'); return false;"
-                                                    title="Hapus" aria-label="Hapus">
+                                                <a href="#" class="btn btn-outline-danger"
+                                                    onclick="confirmDeleteTA('<?= esc($id, 'js') ?>')"
+                                                    title="Hapus Tahun Ajaran" aria-label="Hapus Tahun Ajaran">
                                                     <i class="fa-solid fa-trash"></i>
                                                 </a>
 
@@ -293,7 +292,7 @@
     });
 
     // Konfirmasi hapus
-    function confirmDeleteMatpel(id) {
+    function confirmDeleteTA($id) {
         Swal.fire({
             title: "Apakah Anda yakin?",
             text: "Data yang dihapus tidak dapat dikembalikan!",
@@ -307,7 +306,8 @@
             focusCancel: true
         }).then((result) => {
             if (result.isConfirmed) {
-                window.location.href = "<?= base_url('operator/matpel/delete/') ?>" + encodeURIComponent(id);
+                // ganti route sesuai punyamu; encode biar aman
+                window.location.href = "<?= base_url('operator/tahun-ajaran/delete/') ?>" + encodeURIComponent($id);
             }
         });
     }

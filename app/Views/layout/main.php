@@ -486,6 +486,129 @@
             }, 350));
         });
 
+        // Penugasan
+        $(function() {
+            const $table = $('#tableDataPenugasan');
+
+            const dt = new DataTable($table[0], {
+                // ===== UI =====
+                dom: "<'row mb-2'<'col-sm-12 col-md-6'B><'col-sm-12 col-md-6'f>>" +
+                    "<'row'<'col-12'tr>>" +
+                    "<'row mt-2'<'col-sm-12 col-md-5'i><'col-sm-12 col-md-7'p>>",
+
+                buttons: [{
+                    extend: 'excelHtml5',
+                    text: '<i class="fas fa-file-excel me-2"></i>Download Excel',
+                    className: 'btn btn-success rounded-pill',
+                    title: 'Laporan_Penugasan',
+                    filename: () => {
+                        const d = new Date().toISOString().slice(0, 10);
+                        return `Laporan_Penugasan_${d}`;
+                    },
+                    exportOptions: {
+                        // Kolom ekspor: 0..6 (exclude Aksi/7)
+                        columns: [0, 1, 2, 3, 4, 5, 6],
+                        modifier: {
+                            search: 'applied',
+                            order: 'applied',
+                            page: 'all'
+                        },
+                        format: {
+                            body: function(data) {
+                                // Element DOM -> ambil text
+                                if (data && data.nodeType === 1) return data.textContent.trim();
+                                // String HTML -> strip tag
+                                if (typeof data === 'string') {
+                                    const tmp = document.createElement('div');
+                                    tmp.innerHTML = data;
+                                    return tmp.textContent.trim();
+                                }
+                                return data ?? '';
+                            }
+                        }
+                    }
+                }],
+
+                // ===== Tabel =====
+                responsive: {
+                    details: {
+                        type: 'inline',
+                        target: 'tr'
+                    }
+                },
+                scrollX: true,
+                autoWidth: false,
+                lengthMenu: [
+                    [10, 25, 50, -1],
+                    [10, 25, 50, 'Semua']
+                ],
+                pageLength: 10,
+                stateSave: true,
+                language: {
+                    url: "https://cdn.datatables.net/plug-ins/2.1.6/i18n/id.json"
+                },
+
+                // ===== Kolom & Perilaku =====
+                columnDefs: [{
+                        targets: '_all',
+                        className: 'dt-nowrap'
+                    }, // nowrap semua
+                    {
+                        targets: 0,
+                        orderable: false,
+                        searchable: false,
+                        responsivePriority: 1
+                    }, // No
+                    {
+                        targets: 7,
+                        orderable: false,
+                        searchable: false,
+                        className: 'text-end',
+                        responsivePriority: 1
+                    }, // Aksi
+                    {
+                        targets: 5,
+                        type: 'num'
+                    } // Jam/Minggu numeric
+                ],
+                order: [
+                    [1, 'asc'], // Guru
+                    [4, 'desc'] // Tahun Ajaran
+                ],
+
+                // ===== Nomor urut dinamis =====
+                drawCallback: function() {
+                    const api = this.api();
+                    const info = api.page.info();
+                    api.column(0, {
+                        page: 'current'
+                    }).nodes().each(function(cell, i) {
+                        cell.innerHTML = (info.start + i + 1) + '.';
+                    });
+                }
+            });
+
+            // Recalc saat init
+            dt.on('init', () => {
+                dt.columns.adjust();
+                dt.responsive.recalc();
+            });
+
+            // Debounce search
+            const $filter = $('#tableDataPenugasan_filter input[type=search]');
+            const debounce = (fn, d = 400) => {
+                let t;
+                return function() {
+                    clearTimeout(t);
+                    const ctx = this,
+                        args = arguments;
+                    t = setTimeout(() => fn.apply(ctx, args), d);
+                };
+            };
+            $filter.off('keyup.DT input.DT').on('keyup', debounce(function() {
+                dt.search(this.value).draw();
+            }, 350));
+        });
 
         // delete
         function confirmDeleteSiswa(idOrNisn) {

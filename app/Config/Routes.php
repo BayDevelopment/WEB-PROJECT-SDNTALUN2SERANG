@@ -64,6 +64,7 @@ $routes->group('operator', ['filter' => ['auth', 'role:operator']], static funct
     $routes->get('edit-guru/(:num)',  'OperatorController::page_edit_guru/$1');
     $routes->PUT('edit-guru/(:num)',  'OperatorController::aksi_update_guru/$1');
     $routes->get('detail-guru/(:num)',  'OperatorController::page_detail_guru/$1');
+    $routes->get('data-guru/delete/(:num)',  'OperatorController::delete_data_guru/$1');
 
     // data mapel
     $routes->get('matpel',  'OperatorController::data_matpel');
@@ -81,4 +82,24 @@ $routes->group('operator', ['filter' => ['auth', 'role:operator']], static funct
     $routes->get('edit/tahun-ajaran/(:num)',  'OperatorController::page_edit_tahun_ajaran/$1');
     $routes->PUT('edit/tahun-ajaran/(:num)',  'OperatorController::aksi_edit_tahun_ajaran/$1');
     $routes->get('detail/tahun-ajaran/(:num)',  'OperatorController::page_edit_detail_tahun_ajaran/$1');
+    $routes->get('tahun-ajaran/delete/(:num)', 'OperatorController::delete_tahun_ajaran/$1');
+
+    // GURU MAPEL
+    $routes->get('guru-mapel/tambah/(:segment)', 'OperatorController::page_tambah_guru_mapel/$1');
+    $routes->post('guru-mapel/tambah', 'OperatorController::aksi_tambah_guru_mapel');
+    $routes->get('guru-mapel/edit/(:num)', 'OperatorController::page_edit_guru_mapel/$1');
+    $routes->PUT('guru-mapel/edit/(:num)', 'OperatorController::aksi_update_guru_mapel/$1');
+    $routes->get('guru-mapel/delete/(:num)', 'OperatorController::aksi_delete_guru_mapel/$1');
+    $routes->get('penugasan-guru', 'OperatorController::data_penugasan');
+
+    // DATA KELAS
+    $routes->get('kelas', 'OperatorController::data_kelas');
+    $routes->get('kelas/tambah', 'OperatorController::page_tambah_kelas');
+    $routes->post('kelas/tambah', 'OperatorController::aksi_insert_kelas');
+    $routes->get('kelas/edit/(:num)', 'OperatorController::page_edit_kelas/$1');
+    $routes->post('kelas/edit/(:num)', 'OperatorController::aksi_update_kelas/$1');
+    $routes->get('kelas/detail/(:num)', 'OperatorController::page_detail_kelas/$1');
+
+    // Laporan Data Siswa
+    $routes->get('laporan/siswa', 'OperatorController::page_laporan_d_siswa');
 });

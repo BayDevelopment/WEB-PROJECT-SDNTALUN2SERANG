@@ -31,23 +31,6 @@
                 <li class="breadcrumb-item active"><?= esc($sub_judul) ?></li>
             </ol>
         </div>
-        <?php
-        $total = is_countable($d_guru ?? null) ? count($d_guru) : 0;
-
-        $aktif = 0;
-        if (!empty($d_guru) && is_array($d_guru)) {
-            foreach ($d_guru as $u) {
-                $flag = (string)($u['is_active'] ?? $u['status_active'] ?? '0');
-                if ($flag === '1') $aktif++;
-            }
-        }
-        $nonaktif = max($total - $aktif, 0);
-        ?>
-        <div class="text-muted small mt-3 mt-sm-0">
-            Total User: <strong><?= number_format($total, 0, ',', '.') ?></strong>
-            &nbsp;|&nbsp; Aktif: <strong class="text-success"><?= number_format($aktif, 0, ',', '.') ?></strong>
-            &nbsp;|&nbsp; Nonaktif: <strong class="text-muted"><?= number_format($nonaktif, 0, ',', '.') ?></strong>
-        </div>
     </div>
 
     <div class="card card-elevated mb-3">
@@ -55,29 +38,23 @@
             <!-- Toolbar -->
             <div class="row g-2 align-items-center mb-3 toolbar">
                 <!-- Filter (Form GET) -->
-                <div class="col-12 col-md-9">
+                <div class="col-12 col-md-6">
                     <form id="filterForm" method="get" class="row g-2 align-items-center">
                         <div class="col-12 col-md-8">
                             <div class="input-group input-group-sm search-group">
-                                <span class="input-group-text">
-                                    <i class="fa-solid fa-magnifying-glass"></i>
-                                </span>
-                                <input
-                                    id="searchSiswa"
-                                    type="text"
-                                    name="q"
+                                <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
+                                <input id="searchSiswa" type="text" name="q"
                                     value="<?= esc($q ?? '') ?>"
                                     class="form-control"
                                     placeholder="Cari nama atau NIP..."
-                                    aria-label="Pencarian nama atau NIP"
-                                    autocomplete="off">
+                                    aria-label="Pencarian nama atau NIP" autocomplete="off">
                             </div>
                         </div>
 
                         <div class="col-6 col-md-4">
+                            <?php $g = $gender ?? ''; ?>
                             <select id="filterGender" name="gender" class="form-select form-select-sm" aria-label="Filter gender">
-                                <?php $g = $gender ?? ''; ?>
-                                <option value="" <?= $g === '' ? 'selected' : '' ?>>Semua Gender</option>
+                                <option value="" <?= $g === ''  ? 'selected' : '' ?>>Semua Gender</option>
                                 <option value="L" <?= $g === 'L' ? 'selected' : '' ?>>Laki-laki</option>
                                 <option value="P" <?= $g === 'P' ? 'selected' : '' ?>>Perempuan</option>
                             </select>
@@ -85,15 +62,32 @@
                     </form>
                 </div>
 
-                <!-- Tombol Tambah (di luar form) -->
-                <?php if (!empty($d_guru)): ?>
-                    <div class="col-12 col-md-3 text-md-end">
-                        <a href="<?= base_url('operator/tambah-guru') ?>" class="btn btn-gradient rounded-pill btn-sm py-2 w-100 w-md-auto">
-                            <i class="fa-solid fa-file-circle-plus me-2"></i> Tambah
+                <!-- Lihat Penugasan (global) -->
+                <div class="col-6 col-md-3 text-md-end">
+                    <?php
+                    // pakai total dari controller jika ada, jika tidak hitung dari d_guru
+                    $totalPenugasanToolbar = isset($total_penugasan)
+                        ? (int)$total_penugasan
+                        : array_sum(array_map(static fn($r) => (int)($r['jum_penugasan'] ?? 0), $d_guru ?? []));
+                    ?>
+                    <?php if ($totalPenugasanToolbar > 0): ?>
+                        <a href="<?= base_url('operator/penugasan-guru') ?>"
+                            class="btn btn-outline-secondary rounded-pill btn-sm py-2 w-100 w-md-auto">
+                            <i class="fa-solid fa-list-check me-2"></i>
+                            Lihat Penugasan (<?= $totalPenugasanToolbar ?>)
                         </a>
-                    </div>
-                <?php endif; ?>
+                    <?php endif; ?>
+                </div>
+
+                <!-- Tombol Tambah -->
+                <div class="col-6 col-md-3 text-md-end">
+                    <a href="<?= base_url('operator/tambah-guru') ?>"
+                        class="btn btn-gradient rounded-pill btn-sm py-2 w-100 w-md-auto">
+                        <i class="fa-solid fa-file-circle-plus me-2"></i> Tambah
+                    </a>
+                </div>
             </div>
+
             <!-- Tabel -->
             <?php if (!empty($d_guru)): ?>
                 <div class="table-responsive">
@@ -111,34 +105,35 @@
 
                         <tbody id="tableGuru">
                             <?php
-                            $no = 1; // <- inisialisasi counter sekali di luar foreach
-
-                            // lokasi file untuk foto
-                            $uploadsRel = 'assets/img/uploads/';   // relatif dari public/
-                            $defaultRel = 'assets/img/user.png';   // fallback default
+                            $no = 1; // counter
+                            $uploadsRel = 'assets/img/uploads/'; // relatif dari public/
+                            $defaultRel = 'assets/img/user.png'; // fallback foto
                             ?>
 
                             <?php foreach ($d_guru as $d_g): ?>
                                 <?php
-                                $nip   = (string)($d_g['nip'] ?? '');
-                                $nama  = (string)($d_g['nama_lengkap'] ?? '');
-                                $jk    = strtoupper((string)($d_g['jenis_kelamin'] ?? '')); // L/P/-
-                                $tag   = ($jk === 'L') ? 'Laki-laki' : (($jk === 'P') ? 'Perempuan' : '—');
-                                $badgeClass = ($jk === 'L') ? 'badge-male' : (($jk === 'P') ? 'badge-female' : 'badge-unknown');
+                                // data per baris
+                                $idGuru = (int)($d_g['id_guru'] ?? 0);
+                                $nip    = (string)($d_g['nip'] ?? '');
+                                $nama   = (string)($d_g['nama_lengkap'] ?? '');
+                                $jkRaw  = strtoupper((string)($d_g['jenis_kelamin'] ?? '')); // L/P/-
+                                $tag    = ($jkRaw === 'L') ? 'Laki-laki' : (($jkRaw === 'P') ? 'Perempuan' : '—');
+                                $badgeClass = ($jkRaw === 'L') ? 'badge-male' : (($jkRaw === 'P') ? 'badge-female' : 'badge-unknown');
 
-                                // tentukan URL gambar
+                                // flag "sudah" dari SELECT EXISTS(...) AS sudah (0/1) di controller
+                                $sudah  = ((int)($d_g['sudah'] ?? 0) === 1);
+
+                                // foto
                                 $foto = trim((string)($d_g['foto'] ?? ''));
                                 if ($foto !== '' && preg_match('~^https?://~i', $foto)) {
                                     $img = $foto; // URL absolut
                                 } elseif ($foto !== '' && preg_match('/^[a-zA-Z0-9._-]+$/', $foto) && is_file(FCPATH . $uploadsRel . $foto)) {
                                     $img = base_url($uploadsRel . $foto); // file lokal valid
                                 } else {
-                                    $img = base_url($defaultRel); // fallback default
+                                    $img = base_url($defaultRel); // fallback
                                 }
                                 ?>
-
-                                <tr data-name="<?= esc(mb_strtolower($nama, 'UTF-8')) ?>"
-                                    data-nip="<?= esc($nip) ?>">
+                                <tr data-name="<?= esc(mb_strtolower($nama, 'UTF-8')) ?>" data-nip="<?= esc($nip) ?>">
                                     <td class="text-muted"><?= $no++ ?>.</td>
                                     <td>
                                         <div class="avatar-wrap">
@@ -147,34 +142,49 @@
                                     </td>
                                     <td><span class="font-monospace"><?= esc($nip) ?></span></td>
                                     <td class="fw-semibold"><?= esc($nama) ?></td>
-                                    <td>
-                                        <span class="badge <?= esc($badgeClass) ?>"><?= esc($tag) ?></span>
-                                    </td>
+                                    <td><span class="badge <?= esc($badgeClass) ?>"><?= esc($tag) ?></span></td>
+
                                     <td class="text-end">
                                         <div class="btn-group btn-group-sm" role="group">
-                                            <a href="#" class="btn btn-outline-danger"
-                                                onclick="confirmDeleteGuru('<?= esc($nip, 'js') ?>')"
-                                                title="Hapus">
-                                                <i class="fa-solid fa-trash"></i>
-                                            </a>
+                                            <?php if (!$sudah): ?>
+                                                <!-- Belum punya penugasan ⇒ tombol Tambah AKTIF -->
+                                                <a href="<?= base_url('operator/guru-mapel/tambah/' . urlencode($nip)) ?>"
+                                                    class="btn btn-outline-success" title="Tambah Guru Mapel">
+                                                    <i class="fa-solid fa-plus"></i>
+                                                </a>
+                                            <?php else: ?>
+                                                <!-- Sudah punya penugasan ⇒ tombol Tambah NONAKTIF -->
+                                                <button type="button" class="btn btn-outline-success" title="Guru sudah memiliki penugasan" disabled>
+                                                    <i class="fa-solid fa-plus"></i>
+                                                </button>
+                                            <?php endif; ?>
+
+                                            <!-- Aksi lain -->
                                             <a href="<?= base_url('operator/detail-guru/' . urlencode($nip)) ?>"
                                                 class="btn btn-outline-secondary" title="Detail">
                                                 <i class="fa-regular fa-eye"></i>
                                             </a>
+
                                             <a href="<?= base_url('operator/edit-guru/' . urlencode($nip)) ?>"
                                                 class="btn btn-primary" title="Edit">
                                                 <i class="fa-solid fa-pen-to-square"></i>
                                             </a>
+
+                                            <a href="#" class="btn btn-outline-danger"
+                                                onclick="confirmDeleteGuru('<?= (string)$idGuru ?>')">
+                                                <i class="fa-solid fa-trash"></i>
+                                            </a>
+
                                         </div>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
-
-                            <?php if (empty($d_guru)): ?>
-                                <tr>
-                                    <td colspan="6" class="text-center text-muted">Belum ada data guru.</td>
-                                </tr>
-                            <?php endif; ?>
+                        </tbody>
+                        <?php if (empty($d_guru)): ?>
+                            <tr>
+                                <td colspan="6" class="text-center text-muted">Belum ada data guru.</td>
+                            </tr>
+                        <?php endif; ?>
                         </tbody>
                     </table>
 
@@ -211,5 +221,24 @@
             form.submit();
         });
     });
+
+    function confirmDeleteGuru(id) {
+        Swal.fire({
+            title: "Apakah Anda yakin?",
+            text: "Data yang dihapus tidak dapat dikembalikan!",
+            icon: "warning",
+            showCancelButton: true,
+            confirmButtonColor: "#d33",
+            cancelButtonColor: "#3085d6",
+            confirmButtonText: "Ya, hapus!",
+            cancelButtonText: "Batal",
+            reverseButtons: true,
+            focusCancel: true
+        }).then((r) => {
+            if (r.isConfirmed) {
+                window.location.href = "<?= base_url('operator/data-guru/delete/') ?>" + encodeURIComponent(id);
+            }
+        });
+    }
 </script>
 <?= $this->endSection() ?>

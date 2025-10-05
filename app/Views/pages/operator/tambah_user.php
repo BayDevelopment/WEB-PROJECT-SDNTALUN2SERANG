@@ -174,7 +174,6 @@
                             <option value="guru" <?= old('role') === 'guru'     ? 'selected' : '' ?>>Guru</option>
                             <option value="siswa" <?= old('role') === 'siswa'    ? 'selected' : '' ?>>Siswa</option>
                             <option value="operator" <?= old('role') === 'operator' ? 'selected' : '' ?>>Operator</option>
-                            <option value="admin" <?= old('role') === 'admin'    ? 'selected' : '' ?>>Admin</option>
                         </select>
                         <?php if ($hasErr('role')): ?>
                             <div id="roleFeedback" class="invalid-feedback d-block">
