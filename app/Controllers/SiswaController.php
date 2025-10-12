@@ -310,15 +310,17 @@ class SiswaController extends BaseController
         $data['me'] = $me;
         $siswaId    = (int) $me['id_siswa'];
 
-        // ===== Filter opsional via GET (namun tetap hanya untuk siswa ini)
+        // ===== Filter GET (opsional) — tetap untuk siswa ini saja
         $req     = $this->request;
         $idTA    = trim((string) ($req->getGet('tahunajaran') ?? '')); // id_tahun_ajaran
         $kodeKat = trim((string) ($req->getGet('kategori') ?? ''));   // UTS/UAS (kode)
         $idMapel = trim((string) ($req->getGet('mapel') ?? ''));      // id_mapel
 
-        // ===== Ambil daftar nilai milik siswa ini (join TA, mapel, kategori)
-        $NS = (clone $this->NilaiSiswaTahunan)
-            ->from('tb_nilai_siswa ns', true)
+        // ===== Ambil daftar nilai milik siswa ini
+        // gunakan query builder mentah agar hasil PASTI array (getResultArray)
+        $db = \Config\Database::connect();
+
+        $QB = $db->table('tb_nilai_siswa ns')
             ->select("
             ns.id_nilai, ns.siswa_id, ns.tahun_ajaran_id, ns.mapel_id, ns.kategori_id,
             ns.skor, ns.tanggal, ns.keterangan,
@@ -333,19 +335,19 @@ class SiswaController extends BaseController
             ->where('ns.siswa_id', $siswaId);
 
         if ($idTA !== '' && ctype_digit($idTA)) {
-            $NS->where('ns.tahun_ajaran_id', (int) $idTA);
+            $QB->where('ns.tahun_ajaran_id', (int) $idTA);
         }
         if ($kodeKat !== '') {
-            $NS->where('k.kode', strtoupper($kodeKat));
+            $QB->where('k.kode', strtoupper($kodeKat));
         }
         if ($idMapel !== '' && ctype_digit($idMapel)) {
-            $NS->where('ns.mapel_id', (int) $idMapel);
+            $QB->where('ns.mapel_id', (int) $idMapel);
         }
 
-        $rows = $NS->orderBy('ta.tahun', 'DESC')
+        $rows = $QB->orderBy('ta.tahun', 'DESC')
             ->orderBy('ta.semester', 'DESC')
             ->orderBy('ns.tanggal', 'DESC')
-            ->findAll();
+            ->get()->getResultArray(); // <- PASTI array
 
         // ===== KPI ringkas
         $totalNilai = count($rows);
@@ -360,22 +362,21 @@ class SiswaController extends BaseController
         $data['totalNilai'] = $totalNilai;
         $data['avgNilai']   = $avgNilai;
 
-        // ===== Data untuk chart: rata-rata skor per mapel (tetap hanya milik siswa ini + hormati filter TA/kategori jika diisi)
-        $db = \Config\Database::connect();
-        $QB = $db->table('tb_nilai_siswa ns')
+        // ===== Data untuk chart: rata-rata skor per mapel (tetap milik siswa ini + hormati filter TA/kategori)
+        $QB2 = $db->table('tb_nilai_siswa ns')
             ->select('m.nama AS mapel, AVG(ns.skor) AS avg_skor', false)
             ->join('tb_mapel m', 'm.id_mapel = ns.mapel_id', 'left')
             ->where('ns.siswa_id', $siswaId);
 
         if ($idTA !== '' && ctype_digit($idTA)) {
-            $QB->where('ns.tahun_ajaran_id', (int) $idTA);
+            $QB2->where('ns.tahun_ajaran_id', (int) $idTA);
         }
         if ($kodeKat !== '') {
-            $QB->join('tb_kategori_nilai k', 'k.id_kategori = ns.kategori_id', 'left')
+            $QB2->join('tb_kategori_nilai k', 'k.id_kategori = ns.kategori_id', 'left')
                 ->where('k.kode', strtoupper($kodeKat));
         }
 
-        $rowsMapel = $QB->groupBy('ns.mapel_id, m.nama')->orderBy('m.nama', 'ASC')->get()->getResultArray();
+        $rowsMapel = $QB2->groupBy('ns.mapel_id, m.nama')->orderBy('m.nama', 'ASC')->get()->getResultArray();
 
         $mapelLabels = [];
         $mapelScores = [];
@@ -386,14 +387,37 @@ class SiswaController extends BaseController
         $data['mapelLabels'] = $mapelLabels;
         $data['mapelScores'] = $mapelScores;
 
-        // ===== kirim ulang filter ke view (kalau nanti mau bikin dropdown)
+        // ===== (Opsional) data dropdown untuk filter di view siswa
+        $data['listTA'] = $db->table('tb_tahun_ajaran')
+            ->select('id_tahun_ajaran, tahun, semester, is_active')
+            ->orderBy('tahun', 'DESC')->orderBy('semester', 'DESC')
+            ->get()->getResultArray();
+
+        $data['listMapel'] = $db->table('tb_mapel m')
+            ->select('m.id_mapel, m.nama')
+            ->join('tb_nilai_siswa ns', 'ns.mapel_id = m.id_mapel', 'inner')
+            ->where('ns.siswa_id', $siswaId)
+            ->groupBy('m.id_mapel, m.nama')
+            ->orderBy('m.nama', 'ASC')
+            ->get()->getResultArray();
+
+        $data['listKategori'] = $db->table('tb_kategori_nilai')
+            ->select('id_kategori, kode, nama')
+            ->orderBy('nama', 'ASC')
+            ->get()->getResultArray();
+
+        // ===== kirim ulang filter ke view
         $data['tahunajaran'] = $idTA;
         $data['kategori']    = $kodeKat;
         $data['mapel']       = $idMapel;
 
-        // ===== Render view khusus siswa
+        // ===== Data utama untuk tabel
+        $data['d_nilai'] = $rows;
+
+        // ===== Render view
         return view('pages/siswa/nilai-siswa', $data);
     }
+
 
     public function profile()
     {

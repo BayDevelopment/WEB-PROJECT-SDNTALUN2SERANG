@@ -453,34 +453,62 @@ class OperatorController extends BaseController
 
     public function page_edit_siswa(string $nisn)
     {
-        // Ambil siswa dari SiswaModel saja (user_id ikut dari sini)
+        $nisn = trim($nisn);
+
+        // Ambil siswa + user + kelas; alias-kan kelas_id → id_kelas biar konsisten di view & aksi_update
         $siswa = $this->SiswaModel
-            ->select('tb_siswa.*, tb_users.username AS user_name') // opsional join untuk tampilan nama user
+            ->select([
+                'tb_siswa.*',
+                'tb_siswa.kelas_id AS id_kelas',        // <-- alias penting
+                'tb_users.username AS user_name',
+                'tb_kelas.nama_kelas AS kelas_name'
+            ])
             ->join('tb_users', 'tb_users.id_user = tb_siswa.user_id', 'left')
+            ->join('tb_kelas', 'tb_kelas.id_kelas = tb_siswa.kelas_id', 'left')
             ->where('tb_siswa.nisn', $nisn)
             ->first();
 
         if (! $siswa) {
-            session()->setFlashdata('sweet_error', 'Data siswa tidak ditemukan.');
-            return redirect()->to(base_url('operator/data-siswa'));
+            return redirect()->to(base_url('operator/data-siswa'))
+                ->with('sweet_error', 'Data siswa tidak ditemukan.');
+        }
+
+        // Semua kelas untuk dropdown
+        $kelasList = $this->ModelKelas   // pastikan nama model sesuai: ModelKelas atau KelasModel
+            ->select('id_kelas, nama_kelas')
+            ->orderBy('id_kelas', 'ASC') // atau 'nama_kelas' kalau penamaan bukan angka
+            ->findAll();
+
+        // (Opsional defensif) jika kelas siswa tidak ada di list (data lama), tambahkan sementara
+        if (!empty($siswa['id_kelas']) && $siswa['id_kelas'] > 0) {
+            $inList = array_search((int)$siswa['id_kelas'], array_column($kelasList, 'id_kelas'));
+            if ($inList === false && !empty($siswa['kelas_name'])) {
+                $kelasList[] = [
+                    'id_kelas'   => (int)$siswa['id_kelas'],
+                    'nama_kelas' => (string)$siswa['kelas_name'],
+                ];
+                // urutkan lagi
+                usort($kelasList, fn($a, $b) => $a['id_kelas'] <=> $b['id_kelas']);
+            }
         }
 
         $data = [
             'title'      => 'Edit siswa | SDN Talun 2 Kota Serang',
             'sub_judul'  => 'Edit Siswa/i',
             'nav_link'   => 'Edit Siswa',
-            'siswa'      => $siswa,                           // ← ada 'user_id' dari SiswaModel
+            'siswa'      => $siswa,       // sudah punya 'id_kelas' (alias) & 'kelas_name'
+            'kelasList'  => $kelasList,   // semua kelas untuk dropdown
             'validation' => \Config\Services::validation(),
         ];
 
         return view('pages/operator/edit_siswa', $data);
     }
-    // === ACTION: Update Siswa (by NISN di URL) ===
+
+
     public function aksi_update_siswa(string $nisnParam)
     {
         $req = $this->request;
 
-        // --- Ambil data existing ---
         $existing = $this->SiswaModel->where('nisn', $nisnParam)->first();
         if (! $existing) {
             session()->setFlashdata('sweet_error', 'Data siswa tidak ditemukan.');
@@ -490,102 +518,43 @@ class OperatorController extends BaseController
         $idSiswa = (int) ($existing['id_siswa'] ?? 0);
         $userId  = (int) ($existing['user_id'] ?? 0);
 
-        // --- RULES + pesan Indonesia ---
         $rules = [
-            'nisn' => [
-                'rules'  => "required|min_length[8]|max_length[16]|is_unique[tb_siswa.nisn,id_siswa,{$idSiswa}]",
-                'errors' => [
-                    'required'   => 'NISN wajib diisi.',
-                    'min_length' => 'NISN minimal 8 digit.',
-                    'max_length' => 'NISN maksimal 16 digit.',
-                    'is_unique'  => 'NISN sudah terdaftar.'
-                ]
-            ],
-            'full_name' => [
-                'rules'  => 'required|min_length[3]',
-                'errors' => [
-                    'required'   => 'Nama lengkap wajib diisi.',
-                    'min_length' => 'Nama lengkap minimal 3 karakter.'
-                ]
-            ],
-            'gender' => [
-                'rules'  => 'required|in_list[L,P]',
-                'errors' => [
-                    'required' => 'Jenis kelamin wajib dipilih.',
-                    'in_list'  => 'Jenis kelamin harus L (Laki-laki) atau P (Perempuan).'
-                ]
-            ],
-            'birth_place' => [
-                'rules'  => 'required',
-                'errors' => ['required' => 'Tempat lahir wajib diisi.']
-            ],
-            'birth_date' => [
-                'rules'  => 'required|valid_date[Y-m-d]',
-                'errors' => [
-                    'required'   => 'Tanggal lahir wajib diisi.',
-                    'valid_date' => 'Format tanggal harus YYYY-MM-DD.'
-                ]
-            ],
-            'address' => [
-                'rules'  => 'permit_empty',
-                'errors' => []
-            ],
-            'parent_name' => [
-                'rules'  => 'required|min_length[3]',
-                'errors' => [
-                    'required'   => 'Nama orang tua/wali wajib diisi.',
-                    'min_length' => 'Nama orang tua/wali minimal 3 karakter.'
-                ]
-            ],
-            'phone' => [
-                'rules'  => 'required|numeric|min_length[8]|max_length[20]',
-                'errors' => [
-                    'required'   => 'Nomor HP wajib diisi.',
-                    'numeric'    => 'Nomor HP harus angka.',
-                    'min_length' => 'Nomor HP minimal 8 digit.',
-                    'max_length' => 'Nomor HP maksimal 20 digit.'
-                ]
-            ],
-            'photo' => [
-                'rules'  => 'permit_empty|is_image[photo]|max_size[photo,2048]|ext_in[photo,jpg,jpeg,png]|mime_in[photo,image/jpg,image/jpeg,image/png]',
-                'errors' => [
-                    'is_image' => 'File harus berupa gambar.',
-                    'max_size' => 'Ukuran foto maksimal 2MB.',
-                    'ext_in'   => 'Ekstensi wajib: jpg, jpeg, atau png.',
-                    'mime_in'  => 'MIME harus image/jpg, image/jpeg, atau image/png.'
-                ]
-            ],
+            'nisn'        => "required|min_length[8]|max_length[16]|is_unique[tb_siswa.nisn,id_siswa,{$idSiswa}]",
+            'full_name'   => 'required|min_length[3]',
+            'gender'      => 'required|in_list[L,P]',
+            'birth_place' => 'required',
+            'birth_date'  => 'required|valid_date[Y-m-d]',
+            'address'     => 'permit_empty',
+            'parent_name' => 'required|min_length[3]',
+            'phone'       => 'required|numeric|min_length[8]|max_length[20]',
+            'photo'       => 'permit_empty|is_image[photo]|max_size[photo,2048]|ext_in[photo,jpg,jpeg,png]|mime_in[photo,image/jpg,image/jpeg,image/png]',
+            'id_kelas'    => 'required|is_natural_no_zero|is_not_unique[tb_kelas.id_kelas]', // validasi input
         ];
 
         if (! $this->validate($rules)) {
-            // bawa error per-field agar tampil di view
             session()->setFlashdata('sweet_error', 'Validasi gagal. Periksa kembali isian Anda.');
             return redirect()->back()->withInput()->with('errors', $this->validator->getErrors());
         }
 
-        // --- Ambil input (selain user_id) ---
         $nisnNew    = trim((string) $req->getPost('nisn'));
         $fullName   = trim((string) $req->getPost('full_name'));
         $gender     = (string) $req->getPost('gender');
         $birthPlace = trim((string) $req->getPost('birth_place'));
-        $birthDate  = (string) $req->getPost('birth_date'); // format Y-m-d
+        $birthDate  = (string) $req->getPost('birth_date');
         $address    = trim((string) $req->getPost('address'));
         $parentName = trim((string) $req->getPost('parent_name'));
         $phone      = trim((string) $req->getPost('phone'));
         $photoOld   = trim((string) $req->getPost('photo_old'));
+        $kelasId    = (int) $req->getPost('id_kelas');  // dari form
 
-        // --- Validasi user existing (role siswa & aktif) ---
-        $user = $this->UserModel
-            ->select('id_user, role, is_active')
-            ->where('id_user', $userId)
-            ->first();
-
+        // Validasi user existing...
+        $user = $this->UserModel->select('id_user, role, is_active')->where('id_user', $userId)->first();
         if (! $user || $user['role'] !== 'siswa' || (int) $user['is_active'] !== 1) {
             session()->setFlashdata('sweet_error', 'User tidak valid / tidak aktif / bukan role siswa.');
             return redirect()->back()->withInput();
         }
 
-        // --- Handle Foto ---
+        // Handle foto...
         $uploadDir   = FCPATH . 'assets' . DIRECTORY_SEPARATOR . 'img' . DIRECTORY_SEPARATOR . 'uploads';
         $defaultName = 'user.png';
         if (! is_dir($uploadDir)) {
@@ -593,16 +562,13 @@ class OperatorController extends BaseController
         }
 
         $photoFile = $req->getFile('photo');
-        $photoName = $photoOld ?: $defaultName; // default: pertahankan foto lama (atau default)
+        $photoName = $photoOld ?: $defaultName;
 
         if ($photoFile && $photoFile->isValid() && ! $photoFile->hasMoved()) {
             $ext       = strtolower($photoFile->getExtension() ?: 'jpg');
             $photoName = 'siswa_' . $userId . '_' . time() . '.' . $ext;
-
             try {
                 $photoFile->move($uploadDir, $photoName);
-
-                // Hapus foto lama jika bukan default & berbeda
                 if (! empty($photoOld) && $photoOld !== $defaultName && $photoOld !== $photoName) {
                     $oldPath = $uploadDir . DIRECTORY_SEPARATOR . $photoOld;
                     if (is_file($oldPath)) {
@@ -615,9 +581,9 @@ class OperatorController extends BaseController
             }
         }
 
-        // --- Data update (user_id TIDAK diubah) ---
+        // Simpan ke kolom 'kelas_id'
         $dataUpdate = [
-            'user_id'     => $userId,   // tetap pakai existing
+            'user_id'     => $userId,
             'nisn'        => $nisnNew,
             'full_name'   => $fullName,
             'gender'      => $gender,
@@ -627,6 +593,7 @@ class OperatorController extends BaseController
             'parent_name' => $parentName,
             'phone'       => $phone,
             'photo'       => $photoName,
+            'kelas_id'    => $kelasId, // <-- konsisten dengan relasi di page_edit_siswa
         ];
 
         try {
@@ -639,6 +606,8 @@ class OperatorController extends BaseController
         session()->setFlashdata('sweet_success', 'Data siswa berhasil diperbarui.');
         return redirect()->to(base_url('operator/data-siswa'));
     }
+
+
 
 
     public function page_detail_siswa(string $nisn)

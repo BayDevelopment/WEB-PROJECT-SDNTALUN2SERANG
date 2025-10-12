@@ -40,6 +40,12 @@ $routes->group('siswa', ['filter' => ['auth', 'role:siswa']], static function ($
 // (opsional) konsistenkan juga untuk operator & guru
 $routes->group('guru', ['filter' => ['auth', 'role:guru']], static function ($routes) {
     $routes->get('dashboard', 'GuruController::index');
+    $routes->get('data-siswa', 'GuruController::Data_siswa');
+    $routes->get('detail-siswa/(:num)', 'GuruController::page_detail_siswa/$1');
+    $routes->get('laporan-siswa', 'GuruController::page_laporan_d_siswa');
+    $routes->get('laporan-nilai-siswa', 'GuruController::page_laporan_nilai_siswa');
+    $routes->get('laporan/tambah-nilai', 'GuruController::page_tambah_nilai');
+    $routes->post('laporan/tambah-nilai', 'GuruController::aksi_tambah_nilai');
     $routes->get('profile',  'GuruController::page_profile');
     $routes->post('profile/username',  'GuruController::aksi_update_username');
     $routes->post('profile/password',  'GuruController::aksi_update_password');

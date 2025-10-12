@@ -1,0 +1,169 @@
+<?= $this->extend('layout/main') ?>
+<?= $this->section('content') ?>
+
+<style>
+    /* nowrap ke semua sel jika diperlukan */
+    table.dataTable td.dt-nowrap,
+    table.dataTable th.dt-nowrap {
+        white-space: nowrap;
+    }
+</style>
+
+<div class="container-fluid px-4 page-section">
+    <div class="d-sm-flex align-items-center justify-content-between mb-3">
+        <div>
+            <h1 class="mt-4 page-title"><?= esc($sub_judul ?? 'Laporan Data Siswa') ?></h1>
+            <ol class="breadcrumb breadcrumb-modern mb-0">
+                <li class="breadcrumb-item"><a href="<?= base_url('guru/dashboard') ?>">Dashboard</a></li>
+                <li class="breadcrumb-item active"><?= esc($sub_judul ?? 'Laporan Data Siswa') ?></li>
+            </ol>
+        </div>
+        <div class="text-muted small mt-3 mt-sm-0">
+            Total: <strong><?= number_format((int)($totalSiswa ?? 0), 0, ',', '.') ?></strong>
+            &nbsp;|&nbsp; Aktif: <strong class="text-success"><?= number_format((int)($SiswaAktif ?? 0), 0, ',', '.') ?></strong>
+            &nbsp;|&nbsp; Nonaktif: <strong class="text-muted"><?= number_format((int)($SiswaNonAktif ?? 0), 0, ',', '.') ?></strong>
+        </div>
+    </div>
+
+    <div class="card card-elevated mb-3">
+        <div class="card-body">
+            <!-- Toolbar -->
+            <div class="row g-2 align-items-center mb-3 toolbar">
+                <!-- Filter (Form GET) -->
+                <div class="col-12 col-md-12">
+                    <form id="filterForm" method="get" class="row g-2 align-items-center">
+                        <div class="col-12 col-md-8">
+                            <div class="input-group input-group-sm search-group">
+                                <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
+                                <input
+                                    id="searchSiswa"
+                                    type="text"
+                                    name="q"
+                                    value="<?= esc($q ?? '') ?>"
+                                    class="form-control"
+                                    placeholder="Cari nama atau NISN..."
+                                    aria-label="Pencarian nama atau NISN"
+                                    autocomplete="off">
+                            </div>
+                        </div>
+
+                        <!-- Dropdown Tahun Ajaran (dari tb_tahun_ajaran) -->
+                        <div class="col-6 col-md-4">
+                            <?php $tahunajaran = (string)($tahunajaran ?? ''); ?>
+                            <select id="filterTA" name="tahunajaran" class="form-select form-select-sm" aria-label="Filter Tahun Ajaran">
+                                <option value="" <?= $tahunajaran === '' ? 'selected' : '' ?>>Semua Tahun Ajaran</option>
+                                <?php foreach (($listTA ?? []) as $ta): ?>
+                                    <?php $tid = (string)($ta['id_tahun_ajaran'] ?? ''); ?>
+                                    <option value="<?= esc($tid) ?>" <?= $tahunajaran === $tid ? 'selected' : '' ?>>
+                                        <?= esc($ta['label'] ?? '') ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                    </form>
+
+                </div>
+            </div>
+
+            <!-- Tabel -->
+            <?php if (!empty($d_siswa)): ?>
+                <div class="table-responsive">
+                    <table id="tableDataSiswaLaporan" class="table table-modern align-middle">
+                        <thead>
+                            <tr>
+                                <th class="w-40px">No</th>
+                                <th>NISN</th>
+                                <th>Nama Lengkap</th>
+                                <th>Jenis Kelamin</th>
+                                <th>Status Enrol</th>
+                                <th>Masuk</th>
+                                <th>Keluar</th>
+                                <th class="text-center">Aksi</th>
+                            </tr>
+                        </thead>
+
+                        <tbody id="tableSiswa">
+                            <?php
+                            $no = 1;
+                            $fmtDMY = function ($val): string {
+                                if (empty($val)) return '—';
+                                try {
+                                    $t = \CodeIgniter\I18n\Time::parse($val, 'Asia/Jakarta');
+                                    return $t ? $t->toLocalizedString('dd/MM/yyyy') : '—';
+                                } catch (\Throwable $e) {
+                                    return '—';
+                                }
+                            };
+
+                            foreach ($d_siswa as $d_s):
+                                $idSiswaTh = (int)($d_s['id_siswa_tahun'] ?? 0);
+                                $nisn      = (string)($d_s['nisn'] ?? '');
+                                $nama      = (string)($d_s['full_name'] ?? $d_s['nama_lengkap'] ?? '');
+                                $gndrRaw   = (string)($d_s['gender'] ?? '');
+                                $gndr      = mb_strtolower($gndrRaw, 'UTF-8');
+
+                                $tag = (str_contains($gndr, 'laki') || $gndr === 'l') ? 'Laki-laki'
+                                    : ((str_contains($gndr, 'perem') || $gndr === 'p') ? 'Perempuan'
+                                        : ($gndrRaw !== '' ? $gndrRaw : '—'));
+
+                                $badgeGender = ($tag === 'Laki-laki') ? 'badge bg-primary'
+                                    : (($tag === 'Perempuan') ? 'badge bg-pink' : 'badge bg-secondary');
+
+                                $stRaw = mb_strtolower((string)($d_s['status'] ?? ''), 'UTF-8');
+                                $isEnrolActive = in_array($stRaw, ['1', 'aktif', 'active', 'ya', 'true'], true);
+                                $statusText  = $isEnrolActive ? 'Aktif' : 'Nonaktif';
+                                $badgeStatus = $isEnrolActive ? 'badge bg-success' : 'badge bg-secondary';
+
+                                $tMasukFmt  = $fmtDMY($d_s['tanggal_masuk']  ?? null);
+                                $tKeluarFmt = $fmtDMY($d_s['tanggal_keluar'] ?? null);
+                            ?>
+                                <tr>
+                                    <td class="text-muted"><?= $no++ ?>.</td>
+                                    <td><span class="font-monospace"><?= esc($nisn) ?></span></td>
+                                    <td class="fw-semibold"><?= esc($nama) ?></td>
+                                    <td><span class="<?= esc($badgeGender) ?>"><?= esc($tag) ?></span></td>
+                                    <td><span class="<?= esc($badgeStatus) ?>"><?= esc($statusText) ?></span></td>
+                                    <td><?= esc($tMasukFmt) ?></td>
+                                    <td><?= esc($tKeluarFmt) ?></td>
+                                    <td class="text-center">
+                                        <!-- aksi sesuai kebutuhan: detail / hapus -->
+                                        <a href="<?= base_url('guru/detail-siswa/' . urlencode($nisn)) ?>" class="btn btn-outline-primary btn-sm" title="Detail">
+                                            <i class="fa-regular fa-eye"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+
+                    </table>
+                </div>
+            <?php else: ?>
+                <!-- Empty state -->
+                <div class="empty-card text-center p-5">
+                    <img src="<?= base_url('assets/img/empty-box.png') ?>" class="empty-illustration mb-3" alt="Kosong">
+                    <h5 class="mb-1">Belum ada data siswa</h5>
+                    <p class="text-muted mb-3">Silakan ubah filter atau tambahkan data siswa.</p>
+                </div>
+            <?php endif; ?>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const form = document.getElementById('filterForm');
+        const inpQ = document.getElementById('searchSiswa');
+        const selTA = document.getElementById('filterTA');
+
+        let timer = null;
+        inpQ.addEventListener('input', function() {
+            clearTimeout(timer);
+            timer = setTimeout(() => form.submit(), 350);
+        });
+        selTA?.addEventListener('change', function() {
+            form.submit();
+        });
+    });
+</script>
+
+<?= $this->endSection() ?>

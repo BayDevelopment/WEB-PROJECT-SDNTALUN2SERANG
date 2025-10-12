@@ -23,16 +23,12 @@
         --ring: 0 0 0 .15rem rgba(13, 110, 253, .25);
     }
 
-    /* Page */
-    body {
-        background: #fff;
-    }
-
+    body,
     .container-fluid {
         background: #fff;
     }
 
-    /* ===== Hero (white + subtle accent glow) ===== */
+    /* ===== Hero ===== */
     .dashboard-hero {
         position: relative;
         border-radius: 20px;
@@ -55,7 +51,7 @@
         color: var(--muted);
     }
 
-    /* ===== KPI Cards (clean white) ===== */
+    /* ===== KPI Cards ===== */
     .kpi {
         border: 1px solid var(--border);
         border-radius: 18px;
@@ -100,15 +96,7 @@
         box-shadow: 0 8px 20px rgba(13, 110, 253, .25), inset 0 1px rgba(255, 255, 255, .35);
     }
 
-    .kpi .footer {
-        border-top: 1px solid var(--border);
-        padding-top: .6rem;
-        margin-top: .8rem;
-        color: var(--muted);
-        font-size: .92rem;
-    }
-
-    /* ===== Cards (white) ===== */
+    /* ===== Cards ===== */
     .card-modern {
         border: 1px solid var(--border);
         border-radius: 18px;
@@ -123,14 +111,14 @@
         color: var(--text);
     }
 
-    /* Inputs & buttons focus */
+    /* Focus ring */
     .form-control:focus,
     .form-select:focus,
     .btn:focus {
         box-shadow: var(--ring);
     }
 
-    /* Soft badge (accent tint) */
+    /* Soft badge */
     .badge-soft {
         background: var(--accent-100);
         color: var(--accent);
@@ -150,19 +138,20 @@
     <section class="dashboard-hero mt-4 mb-4">
         <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
             <div>
-                <h1 class="h3 mb-1 title">Dashboard Operator</h1>
+                <h1 class="h3 mb-1 title">Dashboard Guru</h1>
                 <div class="subtitle">
-                    Ringkasan akademik & statistik sekolah
+                    Ringkasan akademik & statistik (kelas yang Anda ajar)
                     <?php if (!empty($ta_aktif)): ?>
                         • <span class="badge badge-soft ms-1">TA: <?= esc($ta_aktif['tahun'] ?? '') ?> - Semester <?= esc($ta_aktif['semester'] ?? '') ?></span>
                     <?php endif; ?>
                 </div>
             </div>
             <div class="d-flex gap-2">
-                <a href="<?= base_url('operator/laporan/nilai-siswa') ?>" class="btn btn-primary rounded-pill px-3">
+                <!-- Sesuaikan route jika perlu -->
+                <a href="<?= base_url('operator/laporan-nilai-siswa') ?>" class="btn btn-primary rounded-pill px-3">
                     <i class="fa-solid fa-table-list me-2"></i> Kelola Nilai
                 </a>
-                <a href="<?= base_url('operator/data-siswa') ?>" class="btn btn-outline-secondary rounded-pill px-3">
+                <a href="<?= base_url('guru/data-siswa') ?>" class="btn btn-outline-secondary rounded-pill px-3">
                     <i class="fa-solid fa-users me-2"></i> Data Siswa
                 </a>
             </div>
@@ -178,7 +167,7 @@
                     <div>
                         <div class="eyebrow">Pencapaian</div>
                         <div class="title">Nilai Tertinggi</div>
-                        <div class="number"><?= esc(number_format($topNilai ?? 0, 0, ',', '.')) ?></div>
+                        <div class="number"><?= esc(number_format((float)($topNilai ?? 0), 0, ',', '.')) ?></div>
                         <div class="text-muted">
                             <?= esc($topNama ?? '—') ?>
                             <?php if (!empty($topKelas)): ?>
@@ -193,14 +182,14 @@
             </div>
         </div>
 
-        <!-- Guru Aktif -->
+        <!-- Guru Aktif (Global) -->
         <div class="col-xl-3 col-md-6">
             <div class="kpi p-3">
                 <div class="d-flex align-items-center justify-content-between">
                     <div>
                         <div class="eyebrow">Tenaga Pendidik</div>
                         <div class="title">Guru Aktif</div>
-                        <div class="number"><?= esc(number_format($guruCount ?? 0, 0, ',', '.')) ?></div>
+                        <div class="number"><?= esc(number_format((int)($guruCount ?? 0), 0, ',', '.')) ?></div>
                         <div class="text-muted">Profesional & berdedikasi</div>
                     </div>
                     <div class="icon-wrap">
@@ -210,15 +199,15 @@
             </div>
         </div>
 
-        <!-- Siswa Aktif -->
+        <!-- Siswa Aktif (kelas yang diajar) -->
         <div class="col-xl-3 col-md-6">
             <div class="kpi p-3">
                 <div class="d-flex align-items-center justify-content-between">
                     <div>
                         <div class="eyebrow">Peserta Didik</div>
                         <div class="title">Siswa Aktif (1–6)</div>
-                        <div class="number"><?= esc(number_format($siswaTotal ?? 0, 0, ',', '.')) ?></div>
-                        <div class="text-muted">Semua tingkat kelas</div>
+                        <div class="number"><?= esc(number_format((int)($siswaTotal ?? 0), 0, ',', '.')) ?></div>
+                        <div class="text-muted">Kelas yang Anda ajar</div>
                     </div>
                     <div class="icon-wrap">
                         <i class="fa-solid fa-user-graduate"></i>
@@ -227,7 +216,7 @@
             </div>
         </div>
 
-        <!-- Kelas Terpadat -->
+        <!-- Kelas Terpadat (kelas yang diajar) -->
         <div class="col-xl-3 col-md-6">
             <div class="kpi p-3">
                 <div class="d-flex align-items-center justify-content-between">
@@ -237,7 +226,7 @@
                         <div class="number">
                             <?= !empty($kelasTerpadat) ? 'Kelas ' . esc($kelasTerpadat) : '—' ?>
                         </div>
-                        <div class="text-muted"><?= esc(number_format($kelasTerpadatJumlah ?? 0, 0, ',', '.')) ?> siswa</div>
+                        <div class="text-muted"><?= esc(number_format((int)($kelasTerpadatJumlah ?? 0), 0, ',', '.')) ?> siswa</div>
                     </div>
                     <div class="icon-wrap">
                         <i class="fa-solid fa-people-group"></i>
@@ -253,10 +242,10 @@
         <div class="col-xl-6">
             <div class="card-modern card mb-4">
                 <div class="card-header">
-                    <i class="fas fa-layer-group me-2"></i> Distribusi Mapel (tb_mapel)
+                    <i class="fas fa-layer-group me-2"></i> Distribusi Mapel (kelas yang Anda ajar)
                 </div>
                 <div class="card-body">
-                    <canvas id="ChartMapelBar"></canvas>
+                    <canvas id="ChartMapelBar" height="160"></canvas>
                     <?php if (empty($mapelLabels ?? [])): ?>
                         <div class="text-muted small mt-2">Belum ada data mapel untuk ditampilkan.</div>
                     <?php endif; ?>
@@ -268,119 +257,131 @@
         <div class="col-xl-6">
             <div class="card-modern card mb-4">
                 <div class="card-header">
-                    <i class="fas fa-chart-bar me-2"></i> Distribusi Siswa per Kelas
+                    <i class="fas fa-chart-bar me-2"></i> Distribusi Siswa per Kelas (kelas yang Anda ajar)
                 </div>
                 <div class="card-body">
-                    <canvas id="ChartSiswaBar"></canvas>
+                    <canvas id="ChartSiswaBar" height="160"></canvas>
                 </div>
             </div>
         </div>
     </div>
-</div>
-<script>
-    // Data PHP -> JS
-    const mapelLabels = <?= json_encode($mapelLabels ?? [], JSON_UNESCAPED_UNICODE) ?>;
-    const mapelCounts = <?= json_encode($mapelCounts ?? [], JSON_NUMERIC_CHECK) ?>;
-    const kelasLabels = ['Kelas 1', 'Kelas 2', 'Kelas 3', 'Kelas 4', 'Kelas 5', 'Kelas 6'];
-    const kelasCounts = [
-        <?= (int)($byClass[1] ?? 0) ?>,
-        <?= (int)($byClass[2] ?? 0) ?>,
-        <?= (int)($byClass[3] ?? 0) ?>,
-        <?= (int)($byClass[4] ?? 0) ?>,
-        <?= (int)($byClass[5] ?? 0) ?>,
-        <?= (int)($byClass[6] ?? 0) ?>,
-    ];
 
-    // Tunggu Chart.js benar-benar tersedia
-    (function bootCharts(attempt = 0) {
-        if (!window.Chart) {
-            if (attempt < 60) return setTimeout(() => bootCharts(attempt + 1), 100); // max +/-6 detik
-            console.error('Chart.js belum termuat. Cek CDN / file lokal / CSP.');
-            return;
-        }
+    <!-- ===== Chart.js ===== -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"
+        integrity="sha384-2gJ3cQzYwU5QXqv+g0h0mXzB1q2n8c3e0n8j2c+Kq+fKk8bC+3o6s6p0kF1Xo1wS"
+        crossorigin="anonymous"></script>
 
-        // Global style
-        Chart.defaults.font.family = `'Inter',system-ui,-apple-system,Segoe UI,Roboto,'Helvetica Neue',Arial,'Noto Sans'`;
-        Chart.defaults.color = '#6b7280';
-        Chart.defaults.plugins.legend.display = false;
-        Chart.defaults.plugins.tooltip.backgroundColor = 'rgba(15,23,42,.92)';
-        Chart.defaults.plugins.tooltip.padding = 10;
-        Chart.defaults.plugins.tooltip.cornerRadius = 10;
+    <script>
+        (function bootCharts(attempt = 0) {
+            if (!window.Chart) {
+                if (attempt < 60) return setTimeout(() => bootCharts(attempt + 1), 100); // retry max ~6s
+                console.error('Chart.js belum termuat. Cek CDN/file lokal/CSP.');
+                return;
+            }
 
-        const ACCENTS = ['#0d6efd', '#3d8bfd', '#0b5ed7', '#6ea8fe', '#9ec5fe', '#cfe2ff', '#74a5ff'];
+            // Data PHP -> JS
+            const mapelLabels = <?= json_encode($mapelLabels ?? [], JSON_UNESCAPED_UNICODE) ?>;
+            const mapelCounts = <?= json_encode($mapelCounts ?? [], JSON_NUMERIC_CHECK) ?>;
 
-        // Chart 1: Mapel
-        const elMapel = document.getElementById('ChartMapelBar');
-        if (elMapel && mapelLabels.length) {
-            new Chart(elMapel.getContext('2d'), {
-                type: 'bar',
-                data: {
-                    labels: mapelLabels,
-                    datasets: [{
-                        label: 'Jumlah',
-                        data: mapelCounts,
-                        backgroundColor: mapelLabels.map((_, i) => ACCENTS[i % ACCENTS.length]),
-                        borderWidth: 0,
-                        borderRadius: 12,
-                        maxBarThickness: 44
-                    }]
-                },
-                options: {
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            grid: {
-                                color: 'rgba(233,236,239,.8)'
+            const kelasLabels = ['Kelas 1', 'Kelas 2', 'Kelas 3', 'Kelas 4', 'Kelas 5', 'Kelas 6'];
+            const kelasCounts = [
+                <?= (int)($byClass[1] ?? 0) ?>,
+                <?= (int)($byClass[2] ?? 0) ?>,
+                <?= (int)($byClass[3] ?? 0) ?>,
+                <?= (int)($byClass[4] ?? 0) ?>,
+                <?= (int)($byClass[5] ?? 0) ?>,
+                <?= (int)($byClass[6] ?? 0) ?>,
+            ];
+
+            // Global style
+            Chart.defaults.font.family = `'Inter',system-ui,-apple-system,Segoe UI,Roboto,'Helvetica Neue',Arial,'Noto Sans'`;
+            Chart.defaults.color = '#6b7280';
+            Chart.defaults.plugins.legend.display = false;
+            Chart.defaults.plugins.tooltip.backgroundColor = 'rgba(15,23,42,.92)';
+            Chart.defaults.plugins.tooltip.padding = 10;
+            Chart.defaults.plugins.tooltip.cornerRadius = 10;
+
+            const ACCENTS = ['#0d6efd', '#3d8bfd', '#0b5ed7', '#6ea8fe', '#9ec5fe', '#cfe2ff', '#74a5ff'];
+
+            // Chart 1: Mapel
+            const elMapel = document.getElementById('ChartMapelBar');
+            if (elMapel) {
+                const hasData = (mapelLabels && mapelLabels.length);
+                new Chart(elMapel.getContext('2d'), {
+                    type: 'bar',
+                    data: {
+                        labels: hasData ? mapelLabels : ['(kosong)'],
+                        datasets: [{
+                            label: 'Jumlah',
+                            data: hasData ? mapelCounts : [0],
+                            backgroundColor: (hasData ? mapelLabels : ['(kosong)']).map((_, i) => ACCENTS[i % ACCENTS.length]),
+                            borderWidth: 0,
+                            borderRadius: 12,
+                            maxBarThickness: 44
+                        }]
+                    },
+                    options: {
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                grid: {
+                                    color: 'rgba(233,236,239,.8)'
+                                },
+                                ticks: {
+                                    precision: 0
+                                }
                             },
-                            ticks: {
-                                precision: 0
-                            }
-                        },
-                        x: {
-                            grid: {
-                                display: false
+                            x: {
+                                grid: {
+                                    display: false
+                                }
                             }
                         }
                     }
-                }
-            });
-        }
+                });
+            }
 
-        // Chart 2: Siswa per Kelas
-        const elKelas = document.getElementById('ChartSiswaBar');
-        if (elKelas) {
-            new Chart(elKelas.getContext('2d'), {
-                type: 'bar',
-                data: {
-                    labels: kelasLabels,
-                    datasets: [{
-                        label: 'Jumlah Siswa',
-                        data: kelasCounts,
-                        backgroundColor: kelasLabels.map((_, i) => ACCENTS[i % ACCENTS.length]),
-                        borderWidth: 0,
-                        borderRadius: 12,
-                        maxBarThickness: 44
-                    }]
-                },
-                options: {
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            grid: {
-                                color: 'rgba(233,236,239,.8)'
-                            }
-                        },
-                        x: {
-                            grid: {
-                                display: false
+            // Chart 2: Siswa per Kelas
+            const elKelas = document.getElementById('ChartSiswaBar');
+            if (elKelas) {
+                new Chart(elKelas.getContext('2d'), {
+                    type: 'bar',
+                    data: {
+                        labels: kelasLabels,
+                        datasets: [{
+                            label: 'Jumlah Siswa',
+                            data: kelasCounts,
+                            backgroundColor: kelasLabels.map((_, i) => ACCENTS[i % ACCENTS.length]),
+                            borderWidth: 0,
+                            borderRadius: 12,
+                            maxBarThickness: 44
+                        }]
+                    },
+                    options: {
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                grid: {
+                                    color: 'rgba(233,236,239,.8)'
+                                },
+                                ticks: {
+                                    precision: 0
+                                }
+                            },
+                            x: {
+                                grid: {
+                                    display: false
+                                }
                             }
                         }
                     }
-                }
-            });
-        }
-    })();
-</script>
+                });
+            }
+        })();
+    </script>
+
+</div>
+
 <?= $this->endSection() ?>

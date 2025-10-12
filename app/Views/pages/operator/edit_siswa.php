@@ -126,7 +126,7 @@ $nisnKey = urlencode((string)($siswa['nisn'] ?? ''));
 
                 <div class="row g-3 mb-3">
                     <!-- user (readonly + hidden agar tetap terkirim) -->
-                    <div class="col-md-6">
+                    <div class="col-12">
                         <label class="form-label">User</label>
                         <input type="text" class="form-control" value="<?= esc($siswa['user_name'] ?? ($siswa['full_name'] ?? '—')) ?>" readonly>
                         <input type="hidden" name="user_id" value="<?= esc($siswa['user_id'] ?? '', 'attr') ?>">
@@ -151,6 +151,35 @@ $nisnKey = urlencode((string)($siswa['nisn'] ?? ''));
                         <?php if ($hasErr('nisn')): ?>
                             <div id="nisnFeedback" class="invalid-feedback d-block"><?= esc($getErr('nisn')) ?></div>
                         <?php endif; ?>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label d-flex align-items-center justify-content-between">
+                            <span>Kelas</span>
+                            <?php if (!empty($siswa['kelas_name'])): ?>
+                                <span class="badge bg-success">Saat ini: <?= esc($siswa['kelas_name']) ?></span>
+                            <?php endif; ?>
+                        </label>
+
+                        <select name="id_kelas" class="form-select<?= $hasErr('id_kelas') ? ' is-invalid' : '' ?>" required>
+                            <option value="" disabled <?= old('id_kelas', (int)($siswa['id_kelas'] ?? 0)) ? '' : 'selected' ?>>— Pilih Kelas —</option>
+                            <?php foreach (($kelasList ?? []) as $k): ?>
+                                <?php
+                                $val = (int)$k['id_kelas'];
+                                $selected = (int)old('id_kelas', (int)($siswa['id_kelas'] ?? 0)) === $val ? 'selected' : '';
+                                ?>
+                                <option value="<?= esc($val, 'attr') ?>" <?= $selected ?>>
+                                    <?= esc($k['nama_kelas']) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+
+                        <?php if ($hasErr('id_kelas')): ?>
+                            <div class="invalid-feedback d-block"><?= esc($getErr('id_kelas')) ?></div>
+                        <?php endif; ?>
+
+                        <!-- Simpan id_kelas awal (opsional, jika ingin bandingkan di controller) -->
+                        <input type="hidden" name="id_kelas_now" value="<?= esc((int)($siswa['id_kelas'] ?? 0), 'attr') ?>">
                     </div>
 
                     <!-- Nama Lengkap -->
