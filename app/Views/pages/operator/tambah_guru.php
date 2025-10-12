@@ -214,7 +214,7 @@
                     </div>
 
                     <!-- alamat -->
-                    <div class="col-12">
+                    <div class="col-md-6">
                         <label for="alamat" class="form-label">Alamat</label>
                         <textarea class="form-control<?= $hasErr('alamat') ? ' is-invalid' : '' ?>"
                             id="alamat" name="alamat" rows="3"
@@ -224,6 +224,31 @@
                             <div id="alamatFeedback" class="invalid-feedback d-block"><?= esc($getErr('alamat')) ?></div>
                         <?php endif; ?>
                     </div>
+
+                    <!-- jabatan -->
+                    <div class="col-md-6">
+                        <label for="jabatan" class="form-label">Jabatan</label>
+                        <?php
+                        $jabatanOld = old('jabatan', (string)($guru['jabatan'] ?? '')); // prefill dari old() atau data existing
+                        $opsiJabatan = ['Kepala Sekolah', 'Wakil Kepala', 'Guru', 'Wali Kelas', 'Operator', 'Staff'];
+                        ?>
+                        <select
+                            class="form-select<?= $hasErr('jabatan') ? ' is-invalid' : '' ?>"
+                            name="jabatan"
+                            id="jabatan"
+                            aria-describedby="jabatanFeedback">
+                            <option value="" <?= $jabatanOld === '' ? 'selected' : '' ?>>— Pilih Jabatan —</option>
+                            <?php foreach ($opsiJabatan as $opt): ?>
+                                <option value="<?= esc($opt, 'attr') ?>" <?= $jabatanOld === $opt ? 'selected' : '' ?>>
+                                    <?= esc($opt) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <?php if ($hasErr('jabatan')): ?>
+                            <div id="jabatanFeedback" class="invalid-feedback d-block"><?= esc($getErr('jabatan')) ?></div>
+                        <?php endif; ?>
+                    </div>
+
 
                     <!-- foto -->
                     <div class="col-md-6">

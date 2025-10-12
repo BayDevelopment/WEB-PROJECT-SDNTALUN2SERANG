@@ -57,76 +57,82 @@
                         </div>
                     </form>
                 </div>
-
-                <!-- Tombol Tambah (di luar form) -->
-                <?php if (!empty($d_siswa)): ?>
-                    <div class="col-12 col-md-3 text-md-end">
-                        <a href="<?= base_url('operator/tambah-siswa') ?>" class="btn btn-gradient rounded-pill btn-sm py-2 w-100 w-md-auto">
-                            <i class="fa-solid fa-file-circle-plus me-2"></i> Tambah
-                        </a>
-                    </div>
-                <?php endif; ?>
             </div>
             <!-- Tabel -->
             <?php if (!empty($d_siswa)): ?>
                 <div class="table-responsive">
-                    <table id="tableDataSiswa" class="table table-modern align-middle">
+                    <table id="tableDataSiswaLaporan" class="table table-modern align-middle">
                         <thead>
                             <tr>
                                 <th class="w-40px">No</th>
-                                <th>Foto</th>
                                 <th>NISN</th>
                                 <th>Nama Lengkap</th>
-                                <th>Gender</th>
-                                <th class="text-end">Aksi</th>
+                                <th>Jenis Kelamin</th>
+                                <th>Status</th>
+                                <th>Masuk</th>
+                                <th>Keluar</th>
+                                <th>Aksi</th>
                             </tr>
                         </thead>
+
                         <tbody id="tableSiswa">
-                            <?php $no = 1;
+                            <?php
+                            $no = 1;
+
+                            $fmtDMY = function ($val): string {
+                                $t = _indo_parse_time($val, 'Asia/Jakarta'); // helper yang sudah kamu buat
+                                return $t ? $t->format('d/m/Y') : '—';
+                            };
+
                             foreach ($d_siswa as $d_s):
-                                $foto = trim((string)($d_s['photo'] ?? ''));
-                                $img  = $foto !== '' ? base_url('assets/img/uploads/' . esc($foto))
-                                    : base_url('assets/img/user.png');
+                                $id = (int)($d_s['id_siswa_tahun'] ?? '');
                                 $nisn = (string)($d_s['nisn'] ?? '');
-                                $nama = (string)($d_s['full_name'] ?? '');
-                                $gndr = strtolower((string)($d_s['gender'] ?? ''));
-                                $tag  = (str_contains($gndr, 'laki') || $gndr === 'l') ? 'Laki-laki'
-                                    : ((str_contains($gndr, 'perem') || $gndr === 'p') ? 'Perempuan' : ($d_s['gender'] ?? '—'));
-                                $badgeClass = ($tag === 'Laki-laki') ? 'badge-male' : (($tag === 'Perempuan') ? 'badge-female' : 'badge-unknown');
+                                // konsisten: pakai 'nama_lengkap' (atau ganti semua ke 'full_name' kalau itu yang di DB)
+                                $nama = (string)($d_s['nama_lengkap'] ?? $d_s['full_name'] ?? '');
+
+                                // Gender → tag + badge
+                                $gndrRaw = (string)($d_s['gender'] ?? '');
+                                $gndr    = mb_strtolower($gndrRaw, 'UTF-8');
+                                $tag     = (str_contains($gndr, 'laki') || $gndr === 'l') ? 'Laki-laki'
+                                    : ((str_contains($gndr, 'perem') || $gndr === 'p') ? 'Perempuan'
+                                        : ($gndrRaw !== '' ? $gndrRaw : '—'));
+                                // Pastikan class ini ada di CSS kamu; kalau tidak, pakai badge bootstrap standar
+                                $badgeGender = ($tag === 'Laki-laki') ? 'badge bg-primary'
+                                    : (($tag === 'Perempuan') ? 'badge bg-pink' : 'badge bg-secondary');
+
+                                // Status enrol (dari tabel tahunan: $d_s['status'])
+                                $stRaw = mb_strtolower((string)($d_s['status'] ?? ''), 'UTF-8');
+                                $isEnrolActive = in_array($stRaw, ['1', 'aktif', 'active', 'ya', 'true'], true);
+                                $statusText  = $isEnrolActive ? 'Aktif' : 'Nonaktif';
+                                $badgeStatus = $isEnrolActive ? 'badge bg-success' : 'badge bg-secondary';
+
+                                // Tanggal masuk / keluar → FORMAT LANGSUNG dari RAW
+                                $tMasukFmt  = $fmtDMY($d_s['tanggal_masuk']  ?? null);
+                                $tKeluarFmt = $fmtDMY($d_s['tanggal_keluar'] ?? null);
                             ?>
                                 <tr data-name="<?= esc(mb_strtolower($nama, 'UTF-8')) ?>"
                                     data-nisn="<?= esc($nisn) ?>"
                                     data-gender="<?= esc($gndr) ?>">
                                     <td class="text-muted"><?= $no++ ?>.</td>
-                                    <td>
-                                        <div class="avatar-wrap">
-                                            <img src="<?= $img ?>" alt="Foto <?= esc($nama) ?>" class="avatar-40 rounded-circle">
-                                        </div>
-                                    </td>
                                     <td><span class="font-monospace"><?= esc($nisn) ?></span></td>
                                     <td class="fw-semibold"><?= esc($nama) ?></td>
+                                    <td><span class="<?= esc($badgeGender) ?>"><?= esc($tag) ?></span></td>
+                                    <td><span class="<?= esc($badgeStatus) ?>"><?= esc($statusText) ?></span></td>
+                                    <td><?= esc($tMasukFmt) ?></td>
+                                    <td><?= esc($tKeluarFmt) ?></td>
                                     <td>
-                                        <span class="badge <?= $badgeClass ?>"><?= esc($tag) ?></span>
-                                    </td>
-                                    <td class="text-end">
-                                        <div class="btn-group btn-group-sm" role="group">
-                                            <a href="#" class="btn btn-outline-danger"
-                                                onclick="confirmDeleteSiswa('<?= esc($nisn, 'js') ?>')"
-                                                title="Hapus">
-                                                <i class="fa-solid fa-trash"></i>
-                                            </a>
-                                            <a href="<?= base_url('operator/detail-siswa/' . urlencode($nisn)) ?>" class="btn btn-outline-secondary" title="Detail">
-                                                <i class="fa-regular fa-eye"></i>
-                                            </a>
-                                            <a href="<?= base_url('operator/edit-siswa/' . urlencode($nisn)) ?>" class="btn btn-primary" title="Edit">
-                                                <i class="fa-solid fa-pen-to-square"></i>
-                                            </a>
-                                        </div>
+                                        <a href="#" class="btn btn-outline-danger"
+                                            onclick="confirmDeleteLapSiswa('<?= esc($id, 'js') ?>')"
+                                            title="Hapus">
+                                            <i class="fa-solid fa-trash"></i>
+                                        </a>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>
+
                     </table>
+
                 </div>
             <?php else: ?>
                 <!-- Empty state -->
@@ -134,7 +140,7 @@
                     <img src="<?= base_url('assets/img/empty-box.png') ?>" class="empty-illustration mb-3" alt="Kosong">
                     <h5 class="mb-1">Belum ada data siswa</h5>
                     <p class="text-muted mb-3">Tambahkan data siswa pertama Anda untuk mulai mengelola informasi.</p>
-                    <a href="<?= base_url('operator/tambah-siswa') ?>" class="btn btn-gradient rounded-pill btn-sm py-2">
+                    <a href="<?= base_url('operator/data-siswa') ?>" class="btn btn-gradient rounded-pill btn-sm py-2">
                         <i class="fa-solid fa-file-circle-plus me-2"></i> Tambah Data
                     </a>
                 </div>
@@ -160,5 +166,24 @@
             form.submit();
         });
     });
+
+    function confirmDeleteLapSiswa(idOrNisn) {
+        Swal.fire({
+            title: "Apakah Anda yakin?",
+            text: "Data yang dihapus tidak dapat dikembalikan!",
+            icon: "warning",
+            showCancelButton: true,
+            confirmButtonColor: "#d33",
+            cancelButtonColor: "#3085d6",
+            confirmButtonText: "Ya, hapus!",
+            cancelButtonText: "Batal",
+            reverseButtons: true,
+            focusCancel: true
+        }).then((result) => {
+            if (result.isConfirmed) {
+                window.location.href = "<?= base_url('operator/laporan-siswa/delete/') ?>" + encodeURIComponent(String(idOrNisn));
+            }
+        });
+    }
 </script>
 <?= $this->endSection() ?>

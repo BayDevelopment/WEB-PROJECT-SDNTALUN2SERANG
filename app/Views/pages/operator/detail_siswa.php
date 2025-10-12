@@ -173,9 +173,13 @@
                                 <span class="badge <?= $isL ? 'badge-male' : ($isP ? 'badge-female' : 'badge-unknown') ?> px-2 py-1 rounded-pill">
                                     <?= $isL ? 'Laki-laki' : ($isP ? 'Perempuan' : '—') ?>
                                 </span>
+                                <span class="badge bg-primary-subtle text-primary px-2 py-1 rounded-pill">
+                                    Kelas: <?= esc($siswa['nama_kelas'] ?? '—') ?>
+                                </span>
                             </div>
 
-                            <div class="mt-1 text-muted small">NISN:
+                            <div class="mt-1 text-muted small">
+                                NISN:
                                 <span id="nisnText" class="font-monospace"><?= esc($siswa['nisn'] ?? '') ?></span>
                                 <button type="button" class="btn btn-sm btn-outline-secondary ms-2 no-print" id="btnCopyNisn">
                                     <i class="fa-regular fa-copy me-1"></i> Salin
@@ -185,6 +189,7 @@
                     </div>
                 </div>
             </div>
+
 
             <!-- Grid Informasi -->
             <div class="row g-3">

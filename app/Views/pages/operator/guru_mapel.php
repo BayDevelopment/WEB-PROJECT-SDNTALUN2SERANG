@@ -79,7 +79,7 @@ $oldKet    = old('keterangan',      $d_row['keterangan']       ?? '');
             <h1 class="mt-4 page-title"><?= esc($sub_judul ?? 'Tambah Guru Mapel') ?></h1>
             <ol class="breadcrumb breadcrumb-modern mb-0">
                 <li class="breadcrumb-item"><a href="<?= base_url('operator/dashboard') ?>">Dashboard</a></li>
-                <li class="breadcrumb-item"><a href="<?= base_url('operator/guru-mapel') ?>">Guru Mapel</a></li>
+                <li class="breadcrumb-item"><a href="<?= base_url('operator/data-guru') ?>">Guru Mapel</a></li>
                 <li class="breadcrumb-item active"><?= esc($sub_judul ?? 'Tambah') ?></li>
             </ol>
         </div>
@@ -168,29 +168,72 @@ $oldKet    = old('keterangan',      $d_row['keterangan']       ?? '');
                         <?php endif; ?>
                     </div>
 
-                    <!-- id_kelas (DROPDOWN BARU) -->
-                    <div class="col-md-4">
-                        <label for="id_kelas" class="form-label">Kelas</label>
-                        <select class="form-select<?= $hasErr('id_kelas') ? ' is-invalid' : '' ?>"
-                            id="id_kelas" name="id_kelas" required aria-describedby="id_kelasFeedback">
-                            <option value="" disabled <?= $oldKelas ? '' : 'selected' ?>>— Pilih Kelas —</option>
-                            <?php foreach (($kelasList ?? []) as $k): ?>
-                                <?php
-                                $kid    = (string)($k['id_kelas'] ?? '');
-                                $knama  = (string)($k['nama_kelas'] ?? $k['nama'] ?? '');
-                                $kting  = (string)($k['tingkat'] ?? '');
-                                $kjur   = (string)($k['jurusan'] ?? '');
-                                $label  = $knama ?: trim(($kting !== '' ? $kting . ' ' : '') . ($kjur ?: ''));
-                                ?>
-                                <option value="<?= esc($kid, 'attr') ?>" <?= $oldKelas == $kid ? 'selected' : '' ?>>
-                                    <?= esc($label ?: ('Kelas #' . $kid)) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
+                    <!-- KELAS (MULTI) -->
+                    <div class="col-md-8">
+                        <label class="form-label d-flex justify-content-between align-items-center">
+                            <span>Kelas</span>
+                            <button type="button" id="btnAddKelas" class="btn btn-sm btn-outline-primary">
+                                <i class="fa fa-plus"></i> Tambah Kelas
+                            </button>
+                        </label>
+
+                        <div id="kelasContainer" class="d-flex flex-column gap-2">
+                            <!-- Row kelas #1 (selalu ada) -->
+                            <div class="kelas-row d-flex gap-2">
+                                <select class="form-select<?= $hasErr('id_kelas') ? ' is-invalid' : '' ?>"
+                                    name="id_kelas[]" required aria-describedby="id_kelasFeedback">
+                                    <option value="" disabled selected>— Pilih Kelas —</option>
+                                    <?php foreach (($kelasList ?? []) as $k): ?>
+                                        <?php
+                                        $kid    = (string)($k['id_kelas'] ?? '');
+                                        $knama  = (string)($k['nama_kelas'] ?? $k['nama'] ?? '');
+                                        $kting  = (string)($k['tingkat'] ?? '');
+                                        $kjur   = (string)($k['jurusan'] ?? '');
+                                        $label  = $knama ?: trim(($kting !== '' ? $kting . ' ' : '') . ($kjur ?: ''));
+                                        ?>
+                                        <option value="<?= esc($kid, 'attr') ?>">
+                                            <?= esc($label ?: ('Kelas #' . $kid)) ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+
+                                <!-- Tombol hapus: disembunyikan untuk row pertama -->
+                                <button type="button" class="btn btn-outline-danger btnRemoveKelas d-none">
+                                    <i class="fa fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+
                         <?php if ($hasErr('id_kelas')): ?>
                             <div id="id_kelasFeedback" class="invalid-feedback d-block"><?= esc($getErr('id_kelas')) ?></div>
                         <?php endif; ?>
+                        <div class="form-text">Anda dapat menambahkan lebih dari satu kelas.</div>
                     </div>
+
+                    <!-- TEMPLATE (disembunyikan) -->
+                    <template id="kelasRowTpl">
+                        <div class="kelas-row d-flex gap-2">
+                            <select class="form-select" name="id_kelas[]" required>
+                                <option value="" disabled selected>— Pilih Kelas —</option>
+                                <?php foreach (($kelasList ?? []) as $k): ?>
+                                    <?php
+                                    $kid    = (string)($k['id_kelas'] ?? '');
+                                    $knama  = (string)($k['nama_kelas'] ?? $k['nama'] ?? '');
+                                    $kting  = (string)($k['tingkat'] ?? '');
+                                    $kjur   = (string)($k['jurusan'] ?? '');
+                                    $label  = $knama ?: trim(($kting !== '' ? $kting . ' ' : '') . ($kjur ?: ''));
+                                    ?>
+                                    <option value="<?= esc($kid, 'attr') ?>">
+                                        <?= esc($label ?: ('Kelas #' . $kid)) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <button type="button" class="btn btn-outline-danger btnRemoveKelas">
+                                <i class="fa fa-trash"></i>
+                            </button>
+                        </div>
+                    </template>
+
 
                     <!-- jam_per_minggu -->
                     <div class="col-md-4">
@@ -225,7 +268,7 @@ $oldKet    = old('keterangan',      $d_row['keterangan']       ?? '');
                     <button type="submit" id="btnSubmit" class="btn btn-gradient rounded-pill">
                         <span class="btn-text"><i class="fa-solid fa-floppy-disk me-2"></i> Simpan</span>
                     </button>
-                    <a href="<?= base_url('operator/guru-mapel') ?>" class="btn btn-dark rounded-pill">
+                    <a href="<?= base_url('operator/data-guru') ?>" class="btn btn-dark rounded-pill">
                         <i class="fa-solid fa-arrow-left me-2"></i> Kembali
                     </a>
                 </div>
@@ -235,6 +278,42 @@ $oldKet    = old('keterangan',      $d_row['keterangan']       ?? '');
 </div>
 
 <script>
+    // kelas multi 
+    document.addEventListener('DOMContentLoaded', function() {
+        const container = document.getElementById('kelasContainer');
+        const tpl = document.getElementById('kelasRowTpl');
+        const btnAdd = document.getElementById('btnAddKelas');
+
+        // Tambah row baru
+        btnAdd?.addEventListener('click', () => {
+            const node = tpl.content.cloneNode(true);
+            container.appendChild(node);
+            // Tampilkan tombol hapus pada semua row kecuali pertama
+            syncRemoveButtons();
+        });
+
+        // Hapus row (event delegation)
+        container.addEventListener('click', (e) => {
+            if (e.target.closest('.btnRemoveKelas')) {
+                const row = e.target.closest('.kelas-row');
+                if (!row) return;
+                row.remove();
+                syncRemoveButtons();
+            }
+        });
+
+        function syncRemoveButtons() {
+            const rows = container.querySelectorAll('.kelas-row');
+            rows.forEach((row, idx) => {
+                const btn = row.querySelector('.btnRemoveKelas');
+                if (!btn) return;
+                btn.classList.toggle('d-none', idx === 0); // baris pertama: tidak boleh dihapus
+            });
+        }
+
+        syncRemoveButtons();
+    });
+
     (function() {
         const form = document.getElementById('formGuruMapel');
         const btnSubmit = document.getElementById('btnSubmit');

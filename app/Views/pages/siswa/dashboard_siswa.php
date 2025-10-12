@@ -78,6 +78,149 @@
 
     </div>
 
-</div>
+    <!-- ===== CANVAS SESUAI CONTROLLER ===== -->
+    <div class="row g-3 g-md-4">
+        <!-- Bar: Nilai per Mapel -->
+        <div class="col-xl-6">
+            <div class="card card-modern mb-4">
+                <div class="card-header"><i class="fas fa-chart-bar me-2"></i> Nilai per Mapel</div>
+                <div class="card-body">
+                    <canvas id="chartMapel" style="min-height:300px"></canvas>
+                    <?php if (empty($mapelLabels ?? [])): ?>
+                        <div class="text-muted small mt-2">Belum ada data mapel untuk ditampilkan.</div>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+        <!-- Line: Tren Nilai -->
+        <div class="col-xl-6">
+            <div class="card card-modern mb-4">
+                <div class="card-header"><i class="fas fa-chart-line me-2"></i> Tren Nilai</div>
+                <div class="card-body">
+                    <canvas id="chartTren" style="min-height:300px"></canvas>
+                    <?php if (empty($trendLabels ?? [])): ?>
+                        <div class="text-muted small mt-2">Belum ada data tren untuk ditampilkan.</div>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+    </div>
 
+    <!-- ===== Data PHP → JS (match controller) ===== -->
+    <script>
+        // Bar (mapel)
+        const mapelLabels = <?= json_encode($mapelLabels ?? [], JSON_UNESCAPED_UNICODE) ?>;
+        const mapelScores = <?= json_encode($mapelScores ?? [], JSON_NUMERIC_CHECK) ?>;
+
+        // Line (tren per waktu)
+        const trendLabels = <?= json_encode($trendLabels ?? [], JSON_UNESCAPED_UNICODE) ?>;
+        const trendScores = <?= json_encode($trendScores ?? [], JSON_NUMERIC_CHECK) ?>;
+    </script>
+
+    <!-- ===== Chart.js CDN (hapus jika sudah di-include di layout) ===== -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+
+    <!-- ===== Init Charts ===== -->
+    <script>
+        (function bootCharts(attempt = 0) {
+            if (!window.Chart) {
+                if (attempt < 60) return setTimeout(() => bootCharts(attempt + 1), 100);
+                console.error('Chart.js belum termuat. Cek CDN / file lokal / CSP.');
+                return;
+            }
+
+            // Global theme
+            Chart.defaults.font.family = `'Inter', system-ui, -apple-system, Segoe UI, Roboto, 'Helvetica Neue', Arial`;
+            Chart.defaults.color = '#6b7280';
+            Chart.defaults.plugins.legend.display = false;
+            Chart.defaults.plugins.tooltip.backgroundColor = 'rgba(15,23,42,.92)';
+            Chart.defaults.plugins.tooltip.padding = 10;
+            Chart.defaults.plugins.tooltip.cornerRadius = 10;
+
+            const ACCENTS = ['#0d6efd', '#3d8bfd', '#0b5ed7', '#6ea8fe', '#9ec5fe', '#cfe2ff', '#74a5ff'];
+
+            // Bar: Mapel
+            const elMapel = document.getElementById('chartMapel');
+            if (elMapel && Array.isArray(mapelLabels) && mapelLabels.length) {
+                new Chart(elMapel.getContext('2d'), {
+                    type: 'bar',
+                    data: {
+                        labels: mapelLabels,
+                        datasets: [{
+                            label: 'Nilai',
+                            data: mapelScores,
+                            backgroundColor: mapelLabels.map((_, i) => ACCENTS[i % ACCENTS.length]),
+                            borderWidth: 0,
+                            borderRadius: 12,
+                            maxBarThickness: 44
+                        }]
+                    },
+                    options: {
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    precision: 0
+                                },
+                                grid: {
+                                    color: 'rgba(233,236,239,.8)'
+                                }
+                            },
+                            x: {
+                                grid: {
+                                    display: false
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            // Line: Tren
+            const elTren = document.getElementById('chartTren');
+            if (elTren && Array.isArray(trendLabels) && trendLabels.length) {
+                const ctx = elTren.getContext('2d');
+                const grad = ctx.createLinearGradient(0, 0, 0, ctx.canvas.height);
+                grad.addColorStop(0, 'rgba(13,110,253,.35)');
+                grad.addColorStop(1, 'rgba(13,110,253,0)');
+
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: trendLabels,
+                        datasets: [{
+                            label: 'Nilai',
+                            data: trendScores,
+                            borderColor: '#0d6efd',
+                            backgroundColor: grad,
+                            borderWidth: 3,
+                            pointRadius: 4,
+                            pointHoverRadius: 5,
+                            pointBackgroundColor: '#0d6efd',
+                            tension: .35,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                grid: {
+                                    color: 'rgba(233,236,239,.8)'
+                                }
+                            },
+                            x: {
+                                grid: {
+                                    display: false
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        })();
+    </script>
+</div>
 <?= $this->endSection() ?>

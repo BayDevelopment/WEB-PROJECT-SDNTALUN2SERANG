@@ -20,7 +20,8 @@ $routes->group('auth', static function ($routes) {
     });
 
     // logout untuk user yang sudah login
-    $routes->get('logout', 'LoginController::logout', ['filter' => 'auth']);
+    // $routes->get('logout', 'LoginController::logout', ['filter' => 'auth']);
+    $routes->post('logout', 'LoginController::logout', ['filter' => 'auth']);
 });
 
 
@@ -28,13 +29,20 @@ $routes->group('auth', static function ($routes) {
 $routes->group('siswa', ['filter' => ['auth', 'role:siswa']], static function ($routes) {
     $routes->get('dashboard', 'SiswaController::index');
     $routes->get('profile', 'SiswaController::profile');
+    $routes->get('data-diri', 'SiswaController::data_diri');
+    $routes->get('data-guru', 'SiswaController::data_guru');
+    $routes->get('nilai-siswa', 'SiswaController::nilai_siswa');
+    $routes->post('profile/username', 'SiswaController::updateUsername');
+    $routes->post('profile/password', 'SiswaController::updatePassword');
 });
 
 
 // (opsional) konsistenkan juga untuk operator & guru
 $routes->group('guru', ['filter' => ['auth', 'role:guru']], static function ($routes) {
-    $routes->get('dashboard', 'GuruController::index',   ['as' => 'guru_dashboard']);
-    $routes->get('profile',  'GuruController::profile', ['as' => 'guru_profile']);
+    $routes->get('dashboard', 'GuruController::index');
+    $routes->get('profile',  'GuruController::page_profile');
+    $routes->post('profile/username',  'GuruController::aksi_update_username');
+    $routes->post('profile/password',  'GuruController::aksi_update_password');
 });
 
 $routes->group('operator', ['filter' => ['auth', 'role:operator']], static function ($routes) {
@@ -56,6 +64,7 @@ $routes->group('operator', ['filter' => ['auth', 'role:operator']], static funct
     $routes->get('edit-user/(:num)',  'OperatorController::page_edit_user/$1');
     $routes->PUT('edit-user/(:num)',  'OperatorController::aksi_update_user/$1');
     $routes->get('detail-user/(:num)',  'OperatorController::page_detail_user/$1');
+    $routes->get('data-user/delete/(:num)',  'OperatorController::aksi_delete_data_user/$1');
 
     // data guru
     $routes->get('data-guru',  'OperatorController::data_guru');
@@ -64,6 +73,8 @@ $routes->group('operator', ['filter' => ['auth', 'role:operator']], static funct
     $routes->get('edit-guru/(:num)',  'OperatorController::page_edit_guru/$1');
     $routes->PUT('edit-guru/(:num)',  'OperatorController::aksi_update_guru/$1');
     $routes->get('detail-guru/(:num)',  'OperatorController::page_detail_guru/$1');
+    $routes->PUT('detail-guru/(:num)/update', 'OperatorController::aksi_detail_update_guru_mapel/$1');
+    $routes->delete('detail-guru/(:num)/delete-all', 'OperatorController::aksi_hapus_semua_guru_mapel/$1');
     $routes->get('data-guru/delete/(:num)',  'OperatorController::delete_data_guru/$1');
 
     // data mapel
@@ -99,7 +110,31 @@ $routes->group('operator', ['filter' => ['auth', 'role:operator']], static funct
     $routes->get('kelas/edit/(:num)', 'OperatorController::page_edit_kelas/$1');
     $routes->post('kelas/edit/(:num)', 'OperatorController::aksi_update_kelas/$1');
     $routes->get('kelas/detail/(:num)', 'OperatorController::page_detail_kelas/$1');
+    $routes->get('kelas/delete/(:num)', 'OperatorController::aksi_delete_kelas/$1');
 
     // Laporan Data Siswa
     $routes->get('laporan/siswa', 'OperatorController::page_laporan_d_siswa');
+    $routes->get('tambah-laporan/siswa/(:num)', 'OperatorController::page_tambah_laporan_siswa/$1');
+    $routes->post('tambah-laporan/siswa', 'OperatorController::aksi_laporan_data_siswa');
+    $routes->get('laporan-siswa/delete/(:num)', 'OperatorController::aksi_delete_laporan_siswa/$1');
+
+
+    // Laporan Data Guru
+    $routes->get('laporan/guru', 'OperatorController::page_laporan_guru');
+    $routes->get('tambah-laporan/guru/(:num)', 'OperatorController::page_tambah_laporan_guru/$1');
+    $routes->post('tambah-laporan/guru', 'OperatorController::aksi_laporan_data_guru');
+    $routes->get('laporan-guru/delete/(:num)', 'OperatorController::aksi_delete_laporan_guru/$1');
+
+    // Laporan data nilai siswa
+    $routes->get('laporan/nilai-siswa', 'OperatorController::page_laporan_nilai_siswa');
+    $routes->get('laporan/tambah-nilai', 'OperatorController::page_tambah_nilai_siswa');
+    $routes->post('laporan/tambah-nilai', 'OperatorController::aksi_tambah_nilai_siswa');
+    $routes->get('laporan/edit-nilai/(:num)', 'OperatorController::page_edit_nilai_siswa/$1');
+    $routes->post('laporan/edit-nilai/(:num)', 'OperatorController::aksi_edit_nilai_siswa/$1');
+    $routes->get('laporan/nilai-siswa/delete/(:segment)', 'OperatorController::aksi_delete_nilai_siswa/$1');
+
+    // Kategori
+    $routes->get('kategori/tambah', 'OperatorController::page_tambah_kategori');
+    $routes->post('kategori/tambah', 'OperatorController::aksi_tambah_kategori');
+    $routes->get('kategori/delete/(:num)', 'OperatorController::aksi_delete/$1');
 });

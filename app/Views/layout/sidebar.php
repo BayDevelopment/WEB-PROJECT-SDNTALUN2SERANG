@@ -59,7 +59,7 @@
                 </div>
 
             <?php elseif ($role === 'guru'): ?>
-                <a class="nav-link collapsed" href="#" data-bs-toggle="collapse"
+                <a class="nav-link collapsed mb-3" href="#" data-bs-toggle="collapse"
                     data-bs-target="#collapseData" aria-expanded="false" aria-controls="collapseData">
                     <div class="sb-nav-link-icon"><i class="fa-solid fa-gear"></i></div>
                     Data
@@ -68,13 +68,13 @@
 
                 <div class="collapse" id="collapseData" data-bs-parent="#sidenavAccordion">
                     <nav class="sb-sidenav-menu-nested nav">
-                        <a class="nav-link " href="<?= base_url('operator/laporan/siswa') ?>">
+                        <a class="nav-link <?= ($nav_link === 'Data Siswa' ? 'active' : '') ?> mb-2" href="<?= base_url('siswa/laporan/siswa') ?>">
                             <i class="fa-regular fa-id-badge me-2"></i> Data Siswa
                         </a>
                     </nav>
                 </div>
             <?php elseif ($role === 'siswa'): ?>
-                <a class="nav-link collapsed" href="#" data-bs-toggle="collapse"
+                <a class="nav-link collapsed mb-3" href="#" data-bs-toggle="collapse"
                     data-bs-target="#collapseData" aria-expanded="false" aria-controls="collapseData">
                     <div class="sb-nav-link-icon"><i class="fa-solid fa-gear"></i></div>
                     Data
@@ -83,10 +83,10 @@
 
                 <div class="collapse" id="collapseData" data-bs-parent="#sidenavAccordion">
                     <nav class="sb-sidenav-menu-nested nav">
-                        <a class="nav-link" href="<?= base_url('operator/profile') ?>">
+                        <a class="nav-link <?= ($nav_link === 'Data Diri' ? 'active' : '') ?> mb-2" href="<?= base_url('siswa/data-diri') ?>">
                             <i class="fa-regular fa-id-badge me-2"></i> Data Diri
                         </a>
-                        <a class="nav-link" href="<?= base_url('operator/guru') ?>">
+                        <a class="nav-link <?= ($nav_link === 'Data Guru' ? 'active' : '') ?> mb-2" href="<?= base_url('siswa/data-guru') ?>">
                             <i class="fa-solid fa-chalkboard-user me-2"></i> Data Guru
                         </a>
                     </nav>
@@ -106,8 +106,8 @@
                 <div class="collapse" id="collapseLaporan" aria-labelledby="headingOne" data-bs-parent="#sidenavAccordion">
                     <nav class="sb-sidenav-menu-nested nav">
                         <a class="nav-link text-capitalize mb-2 <?= ($nav_link === 'Laporan Data Siswa' ? 'active' : '') ?>" href="<?= base_url('operator/laporan/siswa') ?>"><span><i class="fa-regular fa-id-badge me-2"></i></span> Data siswa</a>
-                        <a class="nav-link text-capitalize mb-2" href=""><span><i class="fa-solid fa-chalkboard-user me-2"></i></span> Data Guru</a>
-                        <a class="nav-link text-capitalize mb-2" href=""><span><i class="fa-solid fa-trophy kpi-icon me-2"></i></span> Nilai Siswa</a>
+                        <a class="nav-link text-capitalize mb-2 <?= ($nav_link === 'Laporan Data Guru' ? 'active' : '') ?>" href="<?= base_url('operator/laporan/guru') ?>"><span><i class="fa-solid fa-chalkboard-user me-2"></i></span> Data Guru</a>
+                        <a class="nav-link text-capitalize mb-2 <?= ($nav_link === 'Laporan Nilai' ? 'active' : '') ?>" href="<?= base_url('operator/laporan/nilai-siswa') ?>"><span><i class="fa-solid fa-trophy kpi-icon me-2"></i></span> Nilai Siswa</a>
                     </nav>
                 </div>
             <?php elseif ($role === "guru"): ?>
@@ -118,19 +118,19 @@
                 </a>
                 <div class="collapse" id="collapseLaporan" aria-labelledby="headingOne" data-bs-parent="#sidenavAccordion">
                     <nav class="sb-sidenav-menu-nested nav">
-                        <a class="nav-link text-capitalize" href=""><span><i class="fa-regular fa-id-badge me-2"></i></span> Data siswa</a>
-                        <a class="nav-link text-capitalize" href=""><span><i class="fa-solid fa-chalkboard-user me-2"></i></span> Data Guru</a>
+                        <a class="nav-link text-capitalize" href="<?= base_url() ?>"><span><i class="fa-regular fa-id-badge me-2"></i></span> Data siswa</a>
+                        <a class="nav-link text-capitalize" href="<?= base_url() ?>"><span><i class="fa-solid fa-trophy me-2"></i></span> Nilai Siswa</a>
                     </nav>
                 </div>
             <?php elseif ($role === "siswa"): ?>
-                <a class="nav-link collapsed" href="#" data-bs-toggle="collapse" data-bs-target="#collapseLaporan" aria-expanded="false" aria-controls="collapseLaporan">
+                <a class="nav-link collapsed mb-3" href="#" data-bs-toggle="collapse" data-bs-target="#collapseLaporan" aria-expanded="false" aria-controls="collapseLaporan">
                     <div class="sb-nav-link-icon"><i class="fas fa-columns"></i></div>
                     Laporan
                     <div class="sb-sidenav-collapse-arrow"><i class="fas fa-angle-down"></i></div>
                 </a>
                 <div class="collapse" id="collapseLaporan" aria-labelledby="headingOne" data-bs-parent="#sidenavAccordion">
                     <nav class="sb-sidenav-menu-nested nav">
-                        <a class="nav-link text-capitalize" href=""><span><i class="fa-solid fa-trophy kpi-icon me-2"></i></span> Nilai Siswa</a>
+                        <a class="nav-link text-capitalize <?= ($nav_link === 'Data Nilai Siswa' ? 'active' : '') ?> mb-2" href="<?= base_url('siswa/nilai-siswa') ?>"><span><i class="fa-solid fa-trophy me-2"></i></span> Nilai Siswa</a>
                     </nav>
                 </div>
             <?php endif; ?>

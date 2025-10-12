@@ -4,15 +4,15 @@ namespace App\Models;
 
 use CodeIgniter\Model;
 
-class ModelGuru extends Model
+class KategoriNilai extends Model
 {
-    protected $table            = 'tb_guru';
-    protected $primaryKey       = 'id_guru';
+    protected $table            = 'tb_kategori_nilai';
+    protected $primaryKey       = 'id_kategori';
     protected $useAutoIncrement = true;
     protected $returnType       = 'array';
     protected $useSoftDeletes   = false;
     protected $protectFields    = true;
-    protected $allowedFields    = ['user_id',    'nip',    'nama_lengkap',    'jenis_kelamin',    'tgl_lahir',    'no_telp',    'alamat',    'foto',    'status_active', 'jabatan'];
+    protected $allowedFields    = ['kode',    'nama',    'bobot',    'is_wajib'];
 
     // Dates
     protected $useTimestamps = true;

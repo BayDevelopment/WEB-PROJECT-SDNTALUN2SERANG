@@ -79,17 +79,35 @@
                     <?php endif; ?>
                 </div>
 
-                <!-- Tombol Tambah -->
-                <div class="col-6 col-md-3 text-md-end">
-                    <a href="<?= base_url('operator/tambah-guru') ?>"
-                        class="btn btn-gradient rounded-pill btn-sm py-2 w-100 w-md-auto">
-                        <i class="fa-solid fa-file-circle-plus me-2"></i> Tambah
-                    </a>
-                </div>
+                <?php if (!empty($d_guru)): ?>
+                    <!-- Tombol Tambah -->
+                    <div class="col-6 col-md-3 text-md-end">
+                        <a href="<?= base_url('operator/tambah-guru') ?>"
+                            class="btn btn-gradient rounded-pill btn-sm py-2 w-100 w-md-auto">
+                            <i class="fa-solid fa-file-circle-plus me-2"></i> Tambah
+                        </a>
+                    </div>
+                <?php else: ?>
+                <?php endif; ?>
             </div>
 
             <!-- Tabel -->
             <?php if (!empty($d_guru)): ?>
+                <style>
+                    /* Make disabled anchor truly non-clickable */
+                    a.btn.disabled,
+                    a.btn[aria-disabled="true"] {
+                        pointer-events: none;
+                        opacity: .6;
+                    }
+
+                    .avatar-40 {
+                        width: 40px;
+                        height: 40px;
+                        object-fit: cover;
+                    }
+                </style>
+
                 <div class="table-responsive">
                     <table id="tableDataGuru" class="table table-modern align-middle">
                         <thead>
@@ -105,89 +123,138 @@
 
                         <tbody id="tableGuru">
                             <?php
-                            $no = 1; // counter
-                            $uploadsRel = 'assets/img/uploads/'; // relatif dari public/
-                            $defaultRel = 'assets/img/user.png'; // fallback foto
+                            $no         = 1;                           // counter
+                            $uploadsRel = 'assets/img/uploads/';       // relatif dari public/
+                            $defaultRel = 'assets/img/user.png';       // fallback foto
                             ?>
 
-                            <?php foreach ($d_guru as $d_g): ?>
+                            <?php foreach ($d_guru as $g): ?>
                                 <?php
-                                // data per baris
-                                $idGuru = (int)($d_g['id_guru'] ?? 0);
-                                $nip    = (string)($d_g['nip'] ?? '');
-                                $nama   = (string)($d_g['nama_lengkap'] ?? '');
-                                $jkRaw  = strtoupper((string)($d_g['jenis_kelamin'] ?? '')); // L/P/-
-                                $tag    = ($jkRaw === 'L') ? 'Laki-laki' : (($jkRaw === 'P') ? 'Perempuan' : '—');
+                                // Data per baris
+                                $idGuru = (int)($g['id_guru'] ?? 0);
+                                $nip    = (string)($g['nip'] ?? '');
+                                $nama   = (string)($g['nama_lengkap'] ?? '');
+
+                                // Jenis kelamin → badge
+                                $jkRaw  = strtoupper((string)($g['jenis_kelamin'] ?? '')); // L/P/-
+                                $tagJK  = ($jkRaw === 'L') ? 'Laki-laki' : (($jkRaw === 'P') ? 'Perempuan' : '—');
                                 $badgeClass = ($jkRaw === 'L') ? 'badge-male' : (($jkRaw === 'P') ? 'badge-female' : 'badge-unknown');
 
-                                // flag "sudah" dari SELECT EXISTS(...) AS sudah (0/1) di controller
-                                $sudah  = ((int)($d_g['sudah'] ?? 0) === 1);
+                                // Flag penugasan/mapel (dari controller: SELECT EXISTS(...) AS sudah)
+                                $sudahMapel = !empty($g['has_mapel']); // ← dari controller
+                                $hasLaporanTa = isset($g['has_laporan_ta']) ? (bool)$g['has_laporan_ta'] : false;
 
-                                // foto
-                                $foto = trim((string)($d_g['foto'] ?? ''));
+                                // Flag laporan tahunan sudah ada (pakai salah satu: has_laporan_ta atau sudah)
+                                $hasLaporanTa = isset($g['has_laporan_ta'])
+                                    ? (bool)$g['has_laporan_ta']
+                                    : ((int)($g['sudah'] ?? 0) === 1);
+
+                                // Foto (URL absolut / file lokal / default)
+                                $foto = trim((string)($g['foto'] ?? ''));
                                 if ($foto !== '' && preg_match('~^https?://~i', $foto)) {
-                                    $img = $foto; // URL absolut
+                                    $img = $foto;
                                 } elseif ($foto !== '' && preg_match('/^[a-zA-Z0-9._-]+$/', $foto) && is_file(FCPATH . $uploadsRel . $foto)) {
-                                    $img = base_url($uploadsRel . $foto); // file lokal valid
+                                    $img = base_url($uploadsRel . $foto);
                                 } else {
-                                    $img = base_url($defaultRel); // fallback
+                                    $img = base_url($defaultRel);
                                 }
                                 ?>
                                 <tr data-name="<?= esc(mb_strtolower($nama, 'UTF-8')) ?>" data-nip="<?= esc($nip) ?>">
                                     <td class="text-muted"><?= $no++ ?>.</td>
                                     <td>
-                                        <div class="avatar-wrap">
-                                            <img src="<?= esc($img) ?>" alt="Foto <?= esc($nama) ?>" class="avatar-40 rounded-circle">
-                                        </div>
+                                        <img src="<?= esc($img) ?>" alt="Foto <?= esc($nama) ?>" class="avatar-40 rounded-circle border">
                                     </td>
                                     <td><span class="font-monospace"><?= esc($nip) ?></span></td>
                                     <td class="fw-semibold"><?= esc($nama) ?></td>
-                                    <td><span class="badge <?= esc($badgeClass) ?>"><?= esc($tag) ?></span></td>
+                                    <td><span class="badge <?= esc($badgeClass) ?>"><?= esc($tagJK) ?></span></td>
 
                                     <td class="text-end">
                                         <div class="btn-group btn-group-sm" role="group">
-                                            <?php if (!$sudah): ?>
-                                                <!-- Belum punya penugasan ⇒ tombol Tambah AKTIF -->
-                                                <a href="<?= base_url('operator/guru-mapel/tambah/' . urlencode($nip)) ?>"
-                                                    class="btn btn-outline-success" title="Tambah Guru Mapel">
-                                                    <i class="fa-solid fa-plus"></i>
-                                                </a>
-                                            <?php else: ?>
-                                                <!-- Sudah punya penugasan ⇒ tombol Tambah NONAKTIF -->
-                                                <button type="button" class="btn btn-outline-success" title="Guru sudah memiliki penugasan" disabled>
-                                                    <i class="fa-solid fa-plus"></i>
+                                            <!-- Tambah Guru Mapel -->
+                                            <!-- Tambah Guru Mapel -->
+                                            <?php
+                                            // blokir jabatan dulu (tanpa mengubah $sudahMapel yang sudah ada)
+                                            $blokJabatan = in_array(
+                                                mb_strtolower(trim((string)($g['jabatan'] ?? '')), 'UTF-8'),
+                                                ['kepala sekolah', 'wakil kepala', 'operator', 'staff'],
+                                                true
+                                            );
+                                            ?>
+
+                                            <?php if ($blokJabatan): ?>
+                                                <!-- DIBLOKIR karena jabatan -->
+                                                <button type="button"
+                                                    class="btn btn-outline-secondary"
+                                                    title="Jabatan ini tidak diperbolehkan menambahkan mapel"
+                                                    disabled aria-disabled="true">
+                                                    <i class="fa-solid fa-ban me-1"></i> Tambah Mapel
                                                 </button>
+
+                                            <?php else: ?>
+                                                <!-- TIDAK diblokir: lanjut pakai logika lama $sudahMapel (TETAP dipertahankan) -->
+                                                <?php if (!$sudahMapel): ?>
+                                                    <a href="<?= base_url('operator/guru-mapel/tambah/' . rawurlencode($nip)) ?>"
+                                                        class="btn btn-outline-warning" title="Tambah Guru Mapel">
+                                                        <i class="fa-solid fa-plus"></i>
+                                                    </a>
+                                                <?php else: ?>
+                                                    <button type="button"
+                                                        class="btn btn-outline-success"
+                                                        title="Guru sudah memiliki penugasan"
+                                                        disabled aria-disabled="true">
+                                                        <i class="fa-solid fa-plus"></i>
+                                                    </button>
+                                                <?php endif; ?>
                                             <?php endif; ?>
 
-                                            <!-- Aksi lain -->
-                                            <a href="<?= base_url('operator/detail-guru/' . urlencode($nip)) ?>"
+
+
+                                            <!-- Detail -->
+                                            <a href="<?= base_url('operator/detail-guru/' . rawurlencode($nip)) ?>"
                                                 class="btn btn-outline-secondary" title="Detail">
                                                 <i class="fa-regular fa-eye"></i>
                                             </a>
 
-                                            <a href="<?= base_url('operator/edit-guru/' . urlencode($nip)) ?>"
+                                            <!-- Edit -->
+                                            <a href="<?= base_url('operator/edit-guru/' . rawurlencode($nip)) ?>"
                                                 class="btn btn-primary" title="Edit">
                                                 <i class="fa-solid fa-pen-to-square"></i>
                                             </a>
 
-                                            <a href="#" class="btn btn-outline-danger"
-                                                onclick="confirmDeleteGuru('<?= (string)$idGuru ?>')">
+
+                                            <!-- Hapus -->
+                                            <a href="#"
+                                                class="btn btn-outline-danger"
+                                                title="Hapus"
+                                                onclick="confirmDeleteGuru('<?= esc((string)$idGuru, 'js') ?>')">
                                                 <i class="fa-solid fa-trash"></i>
                                             </a>
 
+                                            <!-- Tambah Laporan Guru: hanya MUNCUL jika guru SUDAH punya mapel -->
+                                            <?php if ($sudahMapel): ?>
+                                                <?php if ($hasLaporanTa): ?>
+                                                    <a href="javascript:void(0)"
+                                                        class="btn btn-success disabled"
+                                                        aria-disabled="true"
+                                                        tabindex="-1"
+                                                        title="Sudah ada laporan untuk tahun ajaran ini">
+                                                        <i class="fa-solid fa-file-import"></i>
+                                                    </a>
+                                                <?php else: ?>
+                                                    <a href="<?= base_url('operator/tambah-laporan/guru/' . rawurlencode($nip)) ?>"
+                                                        class="btn btn-success"
+                                                        title="Tambah Laporan Guru">
+                                                        <i class="fa-solid fa-file-import"></i>
+                                                    </a>
+                                                <?php endif; ?>
+                                            <?php endif; ?>
                                         </div>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>
-                        <?php if (empty($d_guru)): ?>
-                            <tr>
-                                <td colspan="6" class="text-center text-muted">Belum ada data guru.</td>
-                            </tr>
-                        <?php endif; ?>
-                        </tbody>
-                    </table>
 
+                    </table>
                 </div>
             <?php else: ?>
                 <!-- Empty state -->
@@ -200,6 +267,7 @@
                     </a>
                 </div>
             <?php endif; ?>
+
         </div>
     </div>
 </div>

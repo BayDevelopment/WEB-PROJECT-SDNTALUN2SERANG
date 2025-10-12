@@ -164,7 +164,7 @@
                     <img src="<?= base_url('assets/img/empty-box.png') ?>" class="empty-illustration mb-3" alt="Kosong">
                     <h5 class="mb-1">Belum ada data kelas</h5>
                     <p class="text-muted mb-3">Tambahkan data kelas pertama Anda untuk mulai mengelola informasi.</p>
-                    <a href="<?= base_url('operator/tambah-kelas') ?>" class="btn btn-gradient rounded-pill btn-sm py-2">
+                    <a href="<?= base_url('operator/kelas/tambah') ?>" class="btn btn-gradient rounded-pill btn-sm py-2">
                         <i class="fa-solid fa-file-circle-plus me-2"></i> Tambah Data
                     </a>
                 </div>
@@ -313,6 +313,25 @@
             searchInput.addEventListener('keyup', debounce(runSearch, 350));
         }
     });
+
+    function confirmDeleteKelas(id) {
+        Swal.fire({
+            title: "Apakah Anda yakin?",
+            text: "Data yang dihapus tidak dapat dikembalikan!",
+            icon: "warning",
+            showCancelButton: true,
+            confirmButtonColor: "#d33",
+            cancelButtonColor: "#3085d6",
+            confirmButtonText: "Ya, hapus!",
+            cancelButtonText: "Batal",
+            reverseButtons: true,
+            focusCancel: true
+        }).then((r) => {
+            if (r.isConfirmed) {
+                window.location.href = "<?= base_url('operator/kelas/delete/') ?>" + encodeURIComponent(id);
+            }
+        });
+    }
 </script>
 
 <?= $this->endSection() ?>

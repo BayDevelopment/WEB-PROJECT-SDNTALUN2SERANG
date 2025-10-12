@@ -121,6 +121,20 @@
                                             <a href="<?= base_url('operator/edit-siswa/' . urlencode($nisn)) ?>" class="btn btn-primary" title="Edit">
                                                 <i class="fa-solid fa-pen-to-square"></i>
                                             </a>
+
+                                            <?php
+                                            $nisn = (string)($d_s['nisn'] ?? '');
+                                            $alreadyIn = ((int)($d_s['laporan_count'] ?? 0) > 0);
+
+                                            $btnClass = 'btn btn-outline-success' . ($alreadyIn ? ' disabled' : '');
+                                            $btnTitle = $alreadyIn ? 'Sudah ada di Laporan' : 'Tambahkan ke Laporan';
+                                            $aria     = $alreadyIn ? 'aria-disabled="true" tabindex="-1"' : '';
+                                            $url      = base_url('operator/tambah-laporan/siswa/' . urlencode($nisn));
+                                            ?>
+                                            <a href="<?= $url ?>" class="<?= $btnClass ?>" title="<?= esc($btnTitle) ?>" <?= $aria ?>>
+                                                <i class="fa-solid fa-file-import"></i>
+                                            </a>
+
                                         </div>
                                     </td>
                                 </tr>

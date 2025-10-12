@@ -72,6 +72,31 @@
         /* blok interaksi tanpa disabled */
         pointer-events: auto;
     }
+
+    .form-blocker {
+        position: absolute;
+        inset: 0;
+        background: rgba(255, 255, 255, .6);
+        backdrop-filter: blur(1px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 5;
+    }
+
+    .form-blocker.d-none {
+        display: none;
+    }
+
+    .form-blocker-inner {
+        display: flex;
+        align-items: center;
+        padding: .5rem .75rem;
+        border-radius: .75rem;
+        background: rgba(255, 255, 255, .9);
+        box-shadow: 0 .4rem 1rem rgba(0, 0, 0, .08);
+        font-weight: 600;
+    }
 </style>
 <div class="container-fluid px-4 page-section">
     <!-- Header -->
@@ -101,11 +126,12 @@
                 method="post"
                 enctype="multipart/form-data"
                 autocomplete="off"
-                novalidate>
+                novalidate
+                class="position-relative">
+
                 <?= csrf_field() ?>
 
                 <?php
-                // Ambil error dari flash session (di-set di controller dengan ->with('errors', ...))
                 $errors = session('errors') ?? [];
                 $hasErr = fn(string $f) => isset($errors[$f]);
                 $getErr = fn(string $f) => $errors[$f] ?? '';
@@ -136,6 +162,34 @@
                             <div class="alert alert-warning mb-2">User tidak ditemukan. Tambahkan user terlebih dahulu.</div>
                             <select class="form-select" id="user_id" disabled>
                                 <option>— Tidak ada data user —</option>
+                            </select>
+                        <?php endif; ?>
+                    </div>
+
+                    <!-- kelas_id -->
+                    <div class="col-md-6">
+                        <label for="kelas_id" class="form-label">Kelas</label>
+                        <?php if (!empty($optKelas) && is_array($optKelas)): ?>
+                            <select name="kelas_id" id="kelas_id"
+                                class="form-select<?= $hasErr('kelas_id') ? ' is-invalid' : '' ?>">
+                                <option value="" disabled <?= old('kelas_id') ? '' : 'selected' ?>>— Pilih Kelas —</option>
+                                <?php foreach ($optKelas as $k): ?>
+                                    <?php
+                                    $idk  = (int)($k['id_kelas'] ?? 0);
+                                    $nama = trim((string)($k['nama_kelas'] ?? $k['nama'] ?? '')) ?: ('Kelas ' . $idk);
+                                    ?>
+                                    <option value="<?= esc($idk, 'attr') ?>" <?= (int)old('kelas_id') === $idk ? 'selected' : '' ?>>
+                                        <?= esc($nama) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <?php if ($hasErr('kelas_id')): ?>
+                                <div class="invalid-feedback d-block"><?= esc($getErr('kelas_id')) ?></div>
+                            <?php endif; ?>
+                        <?php else: ?>
+                            <div class="alert alert-warning mb-2">Data kelas belum tersedia. Tambahkan kelas terlebih dahulu.</div>
+                            <select id="kelas_id" class="form-select" disabled>
+                                <option>— Tidak ada data kelas —</option>
                             </select>
                         <?php endif; ?>
                     </div>
@@ -190,7 +244,7 @@
                         <input type="text"
                             class="form-control<?= $hasErr('birth_place') ? ' is-invalid' : '' ?>"
                             id="tempat_lahir" name="birth_place"
-                            placeholder="Contoh: Jakarta"
+                            placeholder="Contoh: Serang"
                             value="<?= esc(old('birth_place') ?? '') ?>"
                             aria-describedby="birthPlaceFeedback">
                         <?php if ($hasErr('birth_place')): ?>
@@ -279,10 +333,9 @@
 
                 <!-- Actions -->
                 <div class="d-flex gap-2 mt-4">
-                    <button type="submit" id="btnSubmit" class="btn btn-gradient rounded-pill">
-                        <span class="btn-text">
-                            <i class="fa-solid fa-floppy-disk me-2"></i> Simpan
-                        </span>
+                    <button type="submit" id="btnSubmit" class="btn btn-gradient rounded-pill d-inline-flex align-items-center">
+                        <span class="spinner-border spinner-border-sm me-2 d-none" role="status" aria-hidden="true"></span>
+                        <span class="btn-text"><i class="fa-solid fa-floppy-disk me-2"></i> Simpan</span>
                     </button>
 
                     <button type="reset" id="btnReset" class="btn btn-outline-secondary rounded-pill">
@@ -293,13 +346,86 @@
                         <i class="fa-solid fa-arrow-left me-2"></i> Kembali
                     </a>
                 </div>
+
+                <!-- Overlay blocker -->
+                <div id="formBlocker" class="form-blocker d-none" aria-hidden="true">
+                    <div class="form-blocker-inner">
+                        <div class="spinner-border" role="status" aria-hidden="true"></div>
+                        <div class="ms-2">Loading…</div>
+                    </div>
+                </div>
             </form>
+
 
         </div>
     </div>
 </div>
 <!-- JS: preview foto, Reset, dan loading state submit -->
 <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const form = document.getElementById('formTambahSiswa');
+        const btn = document.getElementById('btnSubmit');
+        const spin = btn ? btn.querySelector('.spinner-border') : null;
+        const txt = btn ? btn.querySelector('.btn-text') : null;
+        const blk = document.getElementById('formBlocker');
+        if (!form || !btn) return;
+
+        let loading = false;
+
+        function freezeTextInputs(container) {
+            const sels = 'input[type="text"],input[type="email"],input[type="password"],input[type="number"],input[type="date"],input[type="time"],input[type="datetime-local"],input[type="search"],input[type="tel"],textarea';
+            container.querySelectorAll(sels).forEach(el => {
+                el.setAttribute('readonly', 'readonly');
+                el.setAttribute('aria-readonly', 'true');
+            });
+            container.querySelectorAll('select,input[type="checkbox"],input[type="radio"]').forEach(el => {
+                el.setAttribute('aria-disabled', 'true');
+            });
+            // file input tidak bisa readonly → biarkan. Overlay akan cegah interaksi.
+        }
+
+        function armLoading(e) {
+            if (loading) return;
+            loading = true;
+
+            if (spin) spin.classList.remove('d-none');
+            if (txt) txt.textContent = 'Loading…';
+
+            btn.setAttribute('disabled', 'disabled');
+            btn.classList.add('disabled');
+
+            if (blk) blk.classList.remove('d-none');
+            form.setAttribute('aria-busy', 'true');
+
+            freezeTextInputs(form);
+
+            // submit manual setelah repaint agar UI sempat berubah
+            if (e && e.preventDefault) e.preventDefault();
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => form.submit());
+            });
+        }
+
+        // Klik tombol dan Enter submit
+        btn.addEventListener('click', armLoading);
+        form.addEventListener('submit', armLoading);
+
+        // Preview foto
+        const fileInput = document.getElementById('pas_photo');
+        const previewImg = document.getElementById('previewPhoto');
+        if (fileInput && previewImg) {
+            fileInput.addEventListener('change', function() {
+                const f = this.files && this.files[0];
+                if (!f) return;
+                const reader = new FileReader();
+                reader.onload = e => {
+                    previewImg.src = e.target.result;
+                };
+                reader.readAsDataURL(f);
+            });
+        }
+    });
+
     (function() {
         const form = document.getElementById('formTambahSiswa');
         const btnSubmit = document.getElementById('btnSubmit');

@@ -63,6 +63,11 @@ class GuruMigration extends Migration
                 'constraint' => 1,
                 'default'    => 1, // 1 aktif, 0 nonaktif
             ],
+            'jabatan' => [
+                'type'       => 'VARCHAR',
+                'constraint' => 100,
+                'null'       => true,
+            ],
             'created_at' => [
                 'type' => 'DATETIME',
                 'null' => true,

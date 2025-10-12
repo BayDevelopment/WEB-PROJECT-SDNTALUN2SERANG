@@ -120,16 +120,47 @@ $nip = urlencode((string)($d_guru['nip'] ?? ''));
                 ?>
 
                 <div class="row g-3 mb-3">
-                    <!-- user (readonly + hidden agar tetap terkirim) -->
+                    <!-- User (dropdown: hanya user terbaru miliknya) -->
                     <div class="col-md-6">
-                        <label class="form-label">User</label>
-                        <input type="text" class="form-control"
-                            value="<?= esc($d_guru['user_name'] ?? ($d_guru['nama_lengkap'] ?? '—')) ?>" readonly>
-                        <input type="hidden" value="<?= esc($d_guru['user_id'] ?? '', 'attr') ?>">
-                        <?php if ($hasErr('user_id')): ?>
-                            <div class="invalid-feedback d-block"><?= esc($getErr('user_id')) ?></div>
+                        <label for="user_id" class="form-label">User</label>
+
+                        <?php
+                        $errors = session('errors') ?? [];
+                        $hasErr = fn(string $f) => isset($errors[$f]);
+                        $getErr = fn(string $f) => $errors[$f] ?? '';
+                        $oldUserId = (int) old('user_id', (int)($d_guru['user_id'] ?? 0));
+                        ?>
+
+                        <?php if (!empty($optUsers) && is_array($optUsers)): ?>
+                            <select
+                                name="user_id" id="user_id"
+                                class="form-select<?= $hasErr('user_id') ? ' is-invalid' : '' ?>">
+                                <?php foreach ($optUsers as $u): ?>
+                                    <?php
+                                    $uid   = (int)($u['id_user'] ?? 0);
+                                    $uname = trim((string)($u['username'] ?? ''));
+                                    $uemail = trim((string)($u['email'] ?? ''));
+                                    ?>
+                                    <option value="<?= esc($uid, 'attr') ?>"
+                                        <?= $oldUserId === $uid ? 'selected' : '' ?>>
+                                        <?= esc($uname !== '' ? $uname : 'user#' . $uid) ?>
+                                        <?= $uemail !== '' ? ' (' . esc($uemail) . ')' : '' ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <?php if ($hasErr('user_id')): ?>
+                                <div class="invalid-feedback d-block"><?= esc($getErr('user_id')) ?></div>
+                            <?php endif; ?>
+                            <div class="form-text">Dropdown ini hanya menampilkan user terbaru yang terhubung dengan guru ini.</div>
+                        <?php else: ?>
+                            <div class="alert alert-warning">User tidak ditemukan untuk guru ini.</div>
+                            <select id="user_id" class="form-select" disabled>
+                                <option>— Tidak ada data user —</option>
+                            </select>
                         <?php endif; ?>
                     </div>
+
+
 
                     <!-- NIP -->
                     <div class="col-md-6">
@@ -212,7 +243,7 @@ $nip = urlencode((string)($d_guru['nip'] ?? ''));
                     </div>
 
                     <!-- Alamat -->
-                    <div class="col-12">
+                    <div class="col-md-6">
                         <label for="alamat" class="form-label">Alamat</label>
                         <textarea
                             class="form-control<?= $hasErr('alamat') ? ' is-invalid' : '' ?>"
@@ -221,6 +252,51 @@ $nip = urlencode((string)($d_guru['nip'] ?? ''));
                             aria-describedby="alamatFeedback"><?= esc(old('alamat', $d_guru['alamat'] ?? '')) ?></textarea>
                         <?php if ($hasErr('alamat')): ?>
                             <div id="alamatFeedback" class="invalid-feedback d-block"><?= esc($getErr('alamat')) ?></div>
+                        <?php endif; ?>
+                    </div>
+                    <!-- JABATAN (FORM EDIT, selected-first + fallback DB + normalisasi) -->
+                    <div class="col-md-6">
+                        <label for="jabatan" class="form-label">Jabatan</label>
+                        <?php
+                        // Daftar label kanonik (harus sama dengan ENUM di DB)
+                        $opsiJabatan = ['Kepala Sekolah', 'Wakil Kepala', 'Guru', 'Wali Kelas', 'Operator', 'Staff'];
+
+                        // Peta normalisasi: lowercase => label kanonik
+                        $canon = [];
+                        foreach ($opsiJabatan as $lbl) {
+                            $canon[strtolower(trim($lbl))] = $lbl;
+                        }
+
+                        // Ambil old() JIKA tidak kosong; jika kosong pakai dari $d_guru
+                        $oldVal = old('jabatan', null);
+                        $rawVal = ($oldVal !== null && $oldVal !== '')
+                            ? (string)$oldVal
+                            : (string)($d_guru['jabatan'] ?? '');
+
+                        // Normalisasi ke label kanonik
+                        $key     = strtolower(trim($rawVal));
+                        $current = $canon[$key] ?? '';
+                        $isValid = $current !== '';
+                        ?>
+                        <select
+                            class="form-select<?= $hasErr('jabatan') ? ' is-invalid' : '' ?>"
+                            name="jabatan" id="jabatan" aria-describedby="jabatanFeedback">
+                            <?php if ($isValid): ?>
+                                <!-- tampilkan yang dipilih (utama) paling atas -->
+                                <option value="<?= esc($current, 'attr') ?>" selected><?= esc($current) ?></option>
+                                <?php foreach ($opsiJabatan as $opt): if ($opt === $current) continue; ?>
+                                    <option value="<?= esc($opt, 'attr') ?>"><?= esc($opt) ?></option>
+                                <?php endforeach; ?>
+                            <?php else: ?>
+                                <option value="" selected>— Pilih Jabatan —</option>
+                                <?php foreach ($opsiJabatan as $opt): ?>
+                                    <option value="<?= esc($opt, 'attr') ?>"><?= esc($opt) ?></option>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </select>
+
+                        <?php if ($hasErr('jabatan')): ?>
+                            <div id="jabatanFeedback" class="invalid-feedback d-block"><?= esc($getErr('jabatan')) ?></div>
                         <?php endif; ?>
                     </div>
 
@@ -275,11 +351,11 @@ $nip = urlencode((string)($d_guru['nip'] ?? ''));
 
                 <!-- Actions -->
                 <div class="d-flex gap-2 mt-4">
-                    <button type="submit" id="btnSubmit" class="btn btn-gradient rounded-pill">
-                        <span class="btn-text">
-                            <i class="fa-solid fa-floppy-disk me-2"></i> Update
-                        </span>
+                    <button type="submit" id="btnSubmit" class="btn btn-gradient rounded-pill d-inline-flex align-items-center">
+                        <span class="spinner-border spinner-border-sm me-2 d-none" role="status" aria-hidden="true"></span>
+                        <span class="btn-text"><i class="fa-solid fa-floppy-disk me-2"></i> Update</span>
                     </button>
+
 
                     <a href="<?= base_url('operator/data-guru') ?>" class="btn btn-dark rounded-pill">
                         <i class="fa-solid fa-arrow-left me-2"></i> Kembali
@@ -294,46 +370,26 @@ $nip = urlencode((string)($d_guru['nip'] ?? ''));
 
 <!-- JS: preview foto, reset foto, dan loading state submit -->
 <script>
-    (function() {
+    document.addEventListener('DOMContentLoaded', function() {
         const form = document.getElementById('formEditGuru');
-        const btnSubmit = document.getElementById('btnSubmit');
-        const btnText = btnSubmit?.querySelector('.btn-text');
-        const inputFile = document.getElementById('photo');
-        const imgPrev = document.getElementById('previewPhoto');
-        const btnResetFoto = document.getElementById('btnResetFoto');
-        const originalSrc = "<?= $imgCurrent ?>";
+        const btn = document.getElementById('btnSubmit');
+        const spin = btn?.querySelector('.spinner-border');
+        const txt = btn?.querySelector('.btn-text');
+        if (!form || !btn) return;
 
-        // Preview saat pilih foto
-        inputFile?.addEventListener('change', function() {
-            const f = this.files?.[0];
-            if (f) {
-                const url = URL.createObjectURL(f);
-                imgPrev.src = url;
-            } else {
-                imgPrev.src = originalSrc;
-            }
+        let submitting = false;
+        form.addEventListener('submit', function() {
+            if (submitting) return;
+            submitting = true;
+            spin && spin.classList.remove('d-none');
+            txt && (txt.textContent = 'Loading…');
+            btn.disabled = true;
+            btn.classList.add('disabled');
+            form.setAttribute('aria-busy', 'true');
+        }, {
+            passive: true
         });
-
-        // Reset ke foto lama
-        btnResetFoto?.addEventListener('click', function() {
-            if (inputFile) inputFile.value = '';
-            imgPrev.src = originalSrc;
-        });
-
-        // Submit overlay (tanpa disable field agar nilai terkirim)
-        form?.addEventListener('submit', function() {
-            if (btnText) {
-                btnText.innerHTML =
-                    '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Menyimpan...';
-            }
-            btnSubmit.disabled = true;
-            form.classList.add('form-lock');
-
-            // pastikan CSRF tidak pernah disabled
-            const csrf = form.querySelector('input[name="<?= csrf_token() ?>"]');
-            if (csrf) csrf.disabled = false;
-        });
-    })();
+    });
 </script>
 
 <?= $this->endSection() ?>

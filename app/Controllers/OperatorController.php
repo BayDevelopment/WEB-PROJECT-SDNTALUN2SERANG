@@ -4,12 +4,17 @@ namespace App\Controllers;
 
 use App\Controllers\BaseController;
 use App\Models\GuruMatpel;
+use App\Models\GuruTahunanModel;
+use App\Models\KategoriNilai;
 use App\Models\KelasModel;
 use App\Models\ModelGuru;
 use App\Models\ModelMatPel;
+use App\Models\NilaiSiswaModel;
 use App\Models\SiswaModel;
+use App\Models\SiswaTahunanModel;
 use App\Models\TahunAjaranModel;
 use App\Models\UserModel;
+use CodeIgniter\Exceptions\PageNotFoundException;
 use CodeIgniter\HTTP\ResponseInterface;
 
 class OperatorController extends BaseController
@@ -21,6 +26,8 @@ class OperatorController extends BaseController
     protected $TahunAjaran;
     protected $ModelGuruMatpel;
     protected $ModelKelas;
+    protected $SiswaTahunanModel;
+    protected $GuruTahunanModel;
     public function __construct()
     {
         $this->UserModel = new UserModel();
@@ -31,30 +38,173 @@ class OperatorController extends BaseController
         $this->ModelGuruMatpel = new GuruMatpel();
         $this->ModelKelas = new KelasModel();
         $this->ModelKelas = new KelasModel();
+        $this->SiswaTahunanModel = new SiswaTahunanModel();
+        $this->GuruTahunanModel = new GuruTahunanModel();
     }
     public function index()
     {
-        //
         $data = [
-            'title' => 'Operator | SDN Talun 2 Kota Serang',
-            'nav_link' => 'Dashboard'
+            'title'    => 'Operator | SDN Talun 2 Kota Serang',
+            'nav_link' => 'Dashboard',
         ];
+
+        $db = \Config\Database::connect();
+
+        // ===== Tahun Ajaran aktif / terbaru
+        $taAktif = $this->TahunAjaran
+            ->where('is_active', 'aktif')
+            ->orderBy('tahun', 'DESC')->orderBy('semester', 'DESC')
+            ->first();
+        if (! $taAktif) {
+            $taAktif = $this->TahunAjaran
+                ->orderBy('tahun', 'DESC')->orderBy('semester', 'DESC')
+                ->first();
+        }
+        $taId = (int)($taAktif['id_tahun_ajaran'] ?? 0);
+        $data['ta_aktif'] = $taAktif;
+
+        // ===== Guru Aktif
+        $aktifSet = ['1', 'aktif', 'active', 'ya', 'true'];
+        if ($taId > 0) {
+            $guruCount = (clone $this->GuruTahunanModel)
+                ->where('tahun_ajaran_id', $taId)
+                ->groupStart()->whereIn('status', $aktifSet)->orWhere('status', 1)->groupEnd()
+                ->countAllResults();
+        } else {
+            $guruCount = (clone $this->ModelGuru)
+                ->groupStart()->whereIn('status', $aktifSet)->orWhere('status', 1)->groupEnd()
+                ->countAllResults();
+        }
+        $data['guruCount'] = (int)$guruCount;
+
+        // ===== Siswa aktif per kelas (tb_siswa JOIN tb_users)
+        $rowsPerKelas = $db->table('tb_siswa s')
+            ->select('s.kelas_id, k.tingkat, k.nama_kelas, COUNT(*) AS jml')
+            ->join('tb_users u', 'u.id_user = s.user_id', 'inner')
+            ->join('tb_kelas k', 'k.id_kelas = s.kelas_id', 'left')
+            ->where('u.role', 'siswa')
+            ->where('u.is_active', 1)
+            ->where('s.kelas_id IS NOT NULL', null, false)
+            ->groupBy('s.kelas_id, k.tingkat, k.nama_kelas')
+            ->get()->getResultArray();
+
+        $byClass    = [1 => 0, 2 => 0, 3 => 0, 4 => 0, 5 => 0, 6 => 0];
+        $siswaTotal = 0;
+
+        $kelasTerpadatId      = null;
+        $kelasTerpadatJumlah  = 0;
+        $kelasTerpadatNama    = null;
+        $kelasTerpadatTingkat = null;
+
+        foreach ($rowsPerKelas as $r) {
+            $j = (int)$r['jml'];
+            $siswaTotal += $j;
+
+            $tingkat = isset($r['tingkat']) && $r['tingkat'] !== null
+                ? (int)$r['tingkat']
+                : (preg_match('/\d+/', (string)($r['nama_kelas'] ?? ''), $m) ? (int)$m[0] : null);
+
+            if ($tingkat !== null && $tingkat >= 1 && $tingkat <= 6) {
+                $byClass[$tingkat] += $j;
+            }
+
+            if ($j > $kelasTerpadatJumlah) {
+                $kelasTerpadatJumlah  = $j;
+                $kelasTerpadatId      = (int)$r['kelas_id'];
+                $kelasTerpadatTingkat = $tingkat;
+                $kelasTerpadatNama    = $r['nama_kelas'] ?? null;
+            }
+        }
+
+        $data['byClass']             = $byClass;
+        $data['siswaTotal']          = (int)$siswaTotal;
+        $data['kelasTerpadat']       = ($kelasTerpadatTingkat !== null) ? (string)$kelasTerpadatTingkat : $kelasTerpadatNama;
+        $data['kelasTerpadatJumlah'] = (int)$kelasTerpadatJumlah;
+        $data['kelasTerpadatNama']   = $kelasTerpadatNama;
+
+        // ===== Distribusi Mapel (tb_mapel)
+        $rowsMapel = $db->table('tb_mapel')
+            ->select('nama, COUNT(*) AS jml', false)
+            ->groupBy('nama')
+            ->orderBy('nama', 'ASC')
+            ->get()->getResultArray();
+
+        $mapelLabels = [];
+        $mapelCounts = [];
+        foreach ($rowsMapel as $rm) {
+            $label = trim((string)($rm['nama'] ?? ''));
+            $count = (int)($rm['jml'] ?? 0);
+            if ($label !== '') {
+                $mapelLabels[] = $label;
+                $mapelCounts[] = $count;
+            }
+        }
+        $data['mapelLabels'] = $mapelLabels;
+        $data['mapelCounts'] = $mapelCounts;
+
+        // ===== Nilai Tertinggi (TA aktif)
+        $topNilai = 0;
+        $topNama = '—';
+        $topKelas = null;
+        if ($taId > 0) {
+            try {
+                $rowTop = $db->table('tb_nilai_siswa ns')
+                    ->select('ns.skor, ns.siswa_id, s.full_name as siswa_nama, ns.tanggal')
+                    ->join('tb_siswa s', 's.id_siswa = ns.siswa_id', 'left')
+                    ->where('ns.tahun_ajaran_id', $taId)
+                    ->orderBy('ns.skor', 'DESC')
+                    ->orderBy('ns.tanggal', 'DESC')
+                    ->limit(1)
+                    ->get()->getRowArray();
+
+                if ($rowTop) {
+                    $topNilai = (float)($rowTop['skor'] ?? 0);
+                    $topNama  = (string)($rowTop['siswa_nama'] ?? '—');
+
+                    $kidTop = $db->table('tb_siswa')->select('kelas_id')->where('id_siswa', (int)$rowTop['siswa_id'])->get()->getRow('kelas_id');
+                    if ($kidTop) {
+                        $metaTop = $db->table('tb_kelas')->select('tingkat, nama_kelas')->where('id_kelas', (int)$kidTop)->get()->getRowArray();
+                        if ($metaTop) {
+                            $topKelas = !empty($metaTop['tingkat']) ? (string)$metaTop['tingkat'] : (string)($metaTop['nama_kelas'] ?? null);
+                        }
+                    }
+                }
+            } catch (\Throwable $e) {
+                // biarkan default
+            }
+        }
+
+        $data['topNilai'] = $topNilai;
+        $data['topNama']  = $topNama;
+        $data['topKelas'] = $topKelas;
+
         return view('pages/operator/dashboard_operator', $data);
     }
+
+
+
+
+
     public function Data_siswa()
     {
-        // --- Ambil query string untuk filter UI ---
         $q      = trim((string) $this->request->getGet('q'));
         $gender = trim((string) $this->request->getGet('gender'));
 
-        // --- Ambil data siswa + status aktif user lewat JOIN ---
-        // Catatan: sesuaikan nama tabel user: 'tb_user' vs 'tb_users' sesuai skema kamu
         $rows = $this->SiswaModel
-            ->select('tb_siswa.*, u.username AS user_name, u.is_active AS user_active')
-            ->join('tb_users AS u', 'u.id_user = tb_siswa.user_id', 'left') // ganti ke tb_users jika memang pakai 's'
+            ->select("
+            tb_siswa.*,
+            u.username AS user_name,
+            u.is_active AS user_active,
+            (
+                SELECT COUNT(1)
+                FROM tb_siswa_tahun st
+                WHERE st.siswa_id = tb_siswa.id_siswa
+            ) AS laporan_count
+        ")
+            ->join('tb_users AS u', 'u.id_user = tb_siswa.user_id', 'left')
             ->findAll();
 
-        // --- Filter manual sesuai input pencarian ---
+        // Filter manual sesuai UI
         $filtered = array_values(array_filter($rows, function (array $row) use ($q, $gender) {
             $match = true;
 
@@ -73,7 +223,7 @@ class OperatorController extends BaseController
             return $match;
         }));
 
-        // --- Hitung aktif/nonaktif dari hasil filter (bisa ganti ke $rows jika mau total keseluruhan) ---
+        // Hitung aktif/nonaktif dari hasil filter
         $SiswaAktif = 0;
         $SiswaNonAktif = 0;
         foreach ($filtered as $r) {
@@ -82,47 +232,58 @@ class OperatorController extends BaseController
             else $SiswaNonAktif++;
         }
 
-        // --- Kirim ke view ---
         $data = [
             'title'         => 'Data siswa | SDN Talun 2 Kota Serang',
             'sub_judul'     => 'Data Siswa/i',
             'nav_link'      => 'Data Siswa',
-            'd_siswa'       => $filtered,          // berisi tb_siswa.* + user_name + user_active
+            'd_siswa'       => $filtered,       // now includes laporan_count
             'q'             => $q,
             'gender'        => $gender,
-            'SiswaAktif'    => $SiswaAktif,        // jumlah siswa aktif (berdasarkan user.is_active)
-            'SiswaNonAktif' => $SiswaNonAktif,     // jumlah siswa nonaktif
-            'totalSiswa'    => count($filtered),   // total (setelah filter)
+            'SiswaAktif'    => $SiswaAktif,
+            'SiswaNonAktif' => $SiswaNonAktif,
+            'totalSiswa'    => count($filtered),
         ];
 
         return view('pages/operator/data_siswa', $data);
     }
 
 
+
     public function page_tambah_siswa()
     {
-        // User Siswa yang AKTIF dan belum punya data di tb_siswa
+        // Akun "siswa" yang belum punya entri di tb_siswa
         $belumIsi = $this->UserModel
             ->select('u.id_user, u.username, u.email, u.role, u.is_active')
-            ->from('tb_users AS u')                               // ganti ke 'tb_users AS u' jika tabelmu pakai "s"
-            ->join('tb_siswa AS s', 's.user_id = u.id_user', 'left')
+            ->from('tb_users u', true) // overwrite FROM
+            ->join('tb_siswa s', 's.user_id = u.id_user', 'left')
             ->where('u.role', 'siswa')
             ->where('u.is_active', 1)
-            ->where('s.id_siswa', null)                          // builder -> IS NULL
+            ->where('s.id_siswa', null)
+            ->groupBy('u.id_user, u.username, u.email, u.role, u.is_active')
             ->orderBy('u.username', 'ASC')
             ->findAll();
 
-        $data = [
+        // ===== Ambil daftar kelas dari KelasModel =====
+        // Sesuaikan kolom nama kelas sesuai skema kamu:
+        //   - jika kolomnya "nama_kelas", pakai select di bawah
+        //   - jika kolomnya "nama", ganti jadi: ->select('id_kelas, nama AS nama_kelas')
+        $optKelas = $this->ModelKelas
+            ->select('id_kelas, nama_kelas')   // <-- ganti ke 'id_kelas, nama AS nama_kelas' bila perlu
+            ->orderBy('nama_kelas', 'ASC')
+            ->findAll(200);
+
+        return view('pages/operator/tambah_siswa', [
             'title'         => 'Tambah siswa | SDN Talun 2 Kota Serang',
             'sub_judul'     => 'Tambah Siswa/i',
             'nav_link'      => 'Tambah Siswa',
-            'd_user'        => $belumIsi,                        // list user yang bisa dipilih
-            'eligibleCount' => is_countable($belumIsi) ? count($belumIsi) : 0,
+            'd_user'        => $belumIsi,
+            'eligibleCount' => count($belumIsi),
+            'optKelas'      => $optKelas,       // <-- kirim ke view
             'validation'    => \Config\Services::validation(),
-        ];
-
-        return view('pages/operator/tambah_siswa', $data);
+        ]);
     }
+
+
 
     // === ACTION: Insert data siswa ===
     public function aksi_insert_siswa()
@@ -132,36 +293,42 @@ class OperatorController extends BaseController
         // ---------- RULES ----------
         $rules = [
             'user_id'     => ['rules' => 'required|is_natural_no_zero', 'errors' => [
-                'required' => 'User wajib dipilih.',
+                'required'           => 'User wajib dipilih.',
                 'is_natural_no_zero' => 'User tidak valid.'
             ]],
+            // KELAS WAJIB
+            'kelas_id'    => ['rules' => 'required|is_natural_no_zero|is_not_unique[tb_kelas.id_kelas]', 'errors' => [
+                'required'           => 'Kelas wajib dipilih.',
+                'is_natural_no_zero' => 'Kelas tidak valid.',
+                'is_not_unique'      => 'Kelas tidak ditemukan.'
+            ]],
             'nisn'        => ['rules' => 'required|min_length[8]|max_length[16]|is_unique[tb_siswa.nisn]', 'errors' => [
-                'required' => 'NISN wajib diisi.',
+                'required'   => 'NISN wajib diisi.',
                 'min_length' => 'NISN minimal 8 digit.',
                 'max_length' => 'NISN maksimal 16 digit.',
-                'is_unique' => 'NISN sudah terdaftar.'
+                'is_unique'  => 'NISN sudah terdaftar.'
             ]],
             'full_name'   => ['rules' => 'required|min_length[3]', 'errors' => [
-                'required' => 'Nama lengkap wajib diisi.',
+                'required'   => 'Nama lengkap wajib diisi.',
                 'min_length' => 'Nama minimal 3 karakter.'
             ]],
             'gender'      => ['rules' => 'required|in_list[L,P]', 'errors' => [
                 'required' => 'Jenis kelamin wajib dipilih.',
-                'in_list' => 'Pilih L atau P.'
+                'in_list'  => 'Pilih L atau P.'
             ]],
             'birth_place' => ['rules' => 'required', 'errors' => ['required' => 'Tempat lahir wajib diisi.']],
             'birth_date'  => ['rules' => 'required|valid_date[Y-m-d]', 'errors' => [
-                'required' => 'Tanggal lahir wajib diisi.',
+                'required'   => 'Tanggal lahir wajib diisi.',
                 'valid_date' => 'Format tanggal harus YYYY-MM-DD.'
             ]],
             'address'     => ['rules' => 'permit_empty', 'errors' => []],
             'parent_name' => ['rules' => 'required|min_length[3]', 'errors' => [
-                'required' => 'Nama orang tua wajib diisi.',
+                'required'   => 'Nama orang tua wajib diisi.',
                 'min_length' => 'Minimal 3 karakter.'
             ]],
             'phone'       => ['rules' => 'required|numeric|min_length[8]|max_length[20]', 'errors' => [
-                'required' => 'Nomor HP wajib diisi.',
-                'numeric' => 'Nomor HP harus angka.',
+                'required'   => 'Nomor HP wajib diisi.',
+                'numeric'    => 'Nomor HP harus angka.',
                 'min_length' => 'Nomor HP minimal 8 digit.',
                 'max_length' => 'Nomor HP maksimal 20 digit.'
             ]],
@@ -170,28 +337,27 @@ class OperatorController extends BaseController
                 'errors' => [
                     'is_image' => 'File harus berupa gambar.',
                     'max_size' => 'Maksimal 2MB.',
-                    'ext_in' => 'Ekstensi wajib: jpg/jpeg/png.',
-                    'mime_in' => 'MIME harus image/jpg, image/jpeg, atau image/png.'
+                    'ext_in'   => 'Ekstensi wajib: jpg/jpeg/png.',
+                    'mime_in'  => 'MIME harus image/jpg, image/jpeg, atau image/png.'
                 ]
             ],
         ];
 
-
         if (! $this->validate($rules)) {
             session()->setFlashdata('sweet_error', 'Validasi gagal. Periksa kembali isian Anda.');
             return redirect()->back()->withInput()
-                ->with('errors', $this->validator->getErrors()); // <-- WAJIB agar error per-field muncul
+                ->with('errors', $this->validator->getErrors());
         }
-
 
         // ---------- AMBIL INPUT ----------
         $userId     = (int) $req->getPost('user_id');
+        $kelasId    = (int) $req->getPost('kelas_id');          // <-- ambil kelas_id
         $nisn       = trim((string) $req->getPost('nisn'));
         $fullName   = trim((string) $req->getPost('full_name'));
-        $gender     = (string) $req->getPost('gender');              // L / P
+        $gender     = (string) $req->getPost('gender');          // L / P
         $birthPlace = trim((string) $req->getPost('birth_place'));
         $birthDate  = (string) $req->getPost('birth_date');
-        $address    = trim((string) $req->getPost('address'));       // View kamu pakai name="alamat"? -> ganti ke 'address' di form
+        $address    = trim((string) $req->getPost('address'));
         $parentName = trim((string) $req->getPost('parent_name'));
         $phone      = trim((string) $req->getPost('phone'));
 
@@ -206,26 +372,30 @@ class OperatorController extends BaseController
             return redirect()->back()->withInput();
         }
 
-        // ---------- CEK user_id SUDAH DIPAKAI DI tb_siswa? (unik) ----------
+        // ---------- CEK user_id SUDAH DIPAKAI DI tb_siswa? ----------
         $sudahAda = $this->SiswaModel->where('user_id', $userId)->first();
         if ($sudahAda) {
-            // "user_id jika tidak sama" → interpretasi umum: kalau SUDAH ADA (duplikat), tolak
             session()->setFlashdata('sweet_error', 'User ini sudah memiliki data siswa.');
             return redirect()->back()->withInput();
         }
 
-        // ---------- CEK nisn SUDAH ADA? (tambahan manual selain rules) ----------
+        // ---------- CEK nisn SUDAH ADA? (tambahan guard) ----------
         $nisnAda = $this->SiswaModel->where('nisn', $nisn)->first();
         if ($nisnAda) {
-            // "nisn jika tidak sama" → interpretasi: kalau SUDAH ADA (duplikat), tolak
             session()->setFlashdata('sweet_error', 'NISN sudah terdaftar.');
             return redirect()->back()->withInput();
         }
 
+        // (Opsional) Guard tambahan untuk kelas_id (di luar rules)
+        // if (! $this->ModelKelas->where('id_kelas', $kelasId)->first()) {
+        //     session()->setFlashdata('sweet_error', 'Kelas tidak ditemukan.');
+        //     return redirect()->back()->withInput();
+        // }
+
         // ---------- HANDLE FOTO ----------
         $uploadDir   = FCPATH . 'assets/img/uploads';
-        $defaultSrc  = FCPATH . 'assets/img/user.png';        // sumber default
-        $defaultName = 'user.png';                            // nama file default di /uploads
+        $defaultSrc  = FCPATH . 'assets/img/user.png';
+        $defaultName = 'user.png';
 
         if (! is_dir($uploadDir)) {
             mkdir($uploadDir, 0755, true);
@@ -235,7 +405,6 @@ class OperatorController extends BaseController
         $photoName = null;
 
         if ($photoFile && $photoFile->isValid() && ! $photoFile->hasMoved()) {
-            // Ada upload: simpan dengan nama aman
             $ext       = strtolower($photoFile->getExtension() ?: 'jpg');
             $photoName = 'siswa_' . $userId . '_' . time() . '.' . $ext;
             try {
@@ -245,24 +414,23 @@ class OperatorController extends BaseController
                 return redirect()->back()->withInput();
             }
         } else {
-            // Tidak ada upload → pakai default. Pastikan tersedia di /uploads
             $targetDefault = $uploadDir . DIRECTORY_SEPARATOR . $defaultName;
             if (! file_exists($targetDefault)) {
-                // copy dari assets/img/user.png → assets/img/uploads/user.png
                 @copy($defaultSrc, $targetDefault);
             }
-            $photoName = $defaultName; // simpan nama file default
+            $photoName = $defaultName;
         }
 
         // ---------- INSERT ----------
         $dataInsert = [
             'user_id'     => $userId,
+            'kelas_id'    => $kelasId,     // <-- simpan kelas_id
             'nisn'        => $nisn,
             'full_name'   => $fullName,
             'gender'      => $gender,
             'birth_place' => $birthPlace,
             'birth_date'  => $birthDate,
-            'address'     => $address,     // jika kolommu bernama 'alamat', ganti key ini -> 'alamat'
+            'address'     => $address,
             'parent_name' => $parentName,
             'phone'       => $phone,
             'photo'       => $photoName,
@@ -271,7 +439,6 @@ class OperatorController extends BaseController
         try {
             $this->SiswaModel->insert($dataInsert);
         } catch (\Throwable $e) {
-            // rollback foto upload jika bukan default
             if ($photoName && $photoName !== $defaultName) {
                 @unlink($uploadDir . DIRECTORY_SEPARATOR . $photoName);
             }
@@ -282,6 +449,7 @@ class OperatorController extends BaseController
         session()->setFlashdata('sweet_success', 'Data siswa berhasil ditambahkan.');
         return redirect()->to(base_url('operator/data-siswa'));
     }
+
 
     public function page_edit_siswa(string $nisn)
     {
@@ -477,10 +645,18 @@ class OperatorController extends BaseController
     {
         $nisn = trim($nisn);
 
-        // Ambil siswa by NISN (bukan find)
+        // Ambil siswa by NISN
         $detailSiswa = $this->SiswaModel
-            ->select('tb_siswa.*, tb_users.username AS user_name, tb_users.username AS user_username')
+            ->select("
+            tb_siswa.*,
+            tb_users.username AS user_name,
+            tb_users.username AS user_username,
+            tb_siswa.kelas_id       AS kelas_id_final,
+            k.nama_kelas            AS nama_kelas
+        ")
             ->join('tb_users', 'tb_users.id_user = tb_siswa.user_id', 'left')
+            // JOIN langsung pakai kelas_id (karena memang kolom itu yang ada)
+            ->join('tb_kelas k', 'k.id_kelas = tb_siswa.kelas_id', 'left')
             ->where('tb_siswa.nisn', $nisn)
             ->first();
 
@@ -498,6 +674,7 @@ class OperatorController extends BaseController
 
         return view('pages/operator/detail_siswa', $data);
     }
+
     // OperatorController.php
 
     public function aksi_delete_siswa(string $nisn)
@@ -585,7 +762,7 @@ class OperatorController extends BaseController
             'validation' => \Config\Services::validation()
         ];
 
-        return view('pages/operator/profile', $data);
+        return view('pages/guru/profile', $data);
     }
 
     // EDIT PROFILE
@@ -768,71 +945,96 @@ class OperatorController extends BaseController
     // DATA GURU
     public function data_guru()
     {
-        // --- Ambil parameter filter dari GET ---
         $req    = $this->request;
-        $q      = trim((string)($req->getGet('q') ?? ''));          // cari nama atau NIP
-        $gender = strtoupper((string)($req->getGet('gender') ?? '')); // 'L' / 'P' / ''
-        if ($gender !== 'L' && $gender !== 'P') {
-            $gender = '';
+        $q      = trim((string) ($req->getGet('q') ?? ''));
+        $gender = strtoupper(trim((string) ($req->getGet('gender') ?? ''))); // L / P / ''
+        $idTA   = (int) ($req->getGet('tahunajaran') ?? 0);
+
+        $guruModel = new \App\Models\ModelGuru();        // table: tb_guru
+        $gtModel   = new \App\Models\GuruTahunanModel(); // table: tb_guru_tahun (asumsi)
+        $taModel   = new \App\Models\TahunAjaranModel(); // table: tb_tahun_ajaran
+        $gmModel   = new \App\Models\GuruMatpel();       // table: tb_guru_mapel / tbl_guru_mapel
+
+        // 1) Tentukan TA target (parameter ?tahunajaran=... atau fallback yang is_active=1)
+        $taTargetId = 0;
+        if ($idTA > 0) {
+            $ta = $taModel->select('id_tahun_ajaran')->where('id_tahun_ajaran', $idTA)->first();
+            $taTargetId = $ta ? (int) $ta['id_tahun_ajaran'] : 0;
+        } else {
+            $ta = $taModel->select('id_tahun_ajaran')->where('is_active', 1)->first();
+            $taTargetId = $ta ? (int) $ta['id_tahun_ajaran'] : 0;
         }
 
-        // 1) Tahun Ajaran aktif (opsional)
-        $taAktif = $this->TahunAjaran
-            ->select('id_tahun_ajaran')
-            ->where('is_active', 1)
-            ->orderBy('start_date', 'DESC')
-            ->first();
+        // 2) Ambil list guru + filter q/gender + sertakan jabatan
+        $gq = $guruModel
+            ->select('id_guru, nip, nama_lengkap, jenis_kelamin, jabatan, status_active')
+            ->orderBy('nama_lengkap', 'ASC');
 
-        $idTaAktif = $taAktif['id_tahun_ajaran'] ?? null;
-
-        // 2) Total penugasan global (seluruh baris tb_guru_mapel)
-        $totalPenugasan = $this->ModelGuruMatpel->countAll();
-
-        // 3) Daftar guru + jumlah penugasan per guru (filter TA aktif di ON agar tetap LEFT JOIN)
-        $joinCond = 'gm.id_guru = tb_guru.id_guru';
-        if ($idTaAktif) {
-            $joinCond .= ' AND gm.id_tahun_ajaran = ' . (int)$idTaAktif;
+        if ($gender === 'L' || $gender === 'P') {
+            $gq->where('jenis_kelamin', $gender);
         }
 
-        $builder = $this->ModelGuru
-            ->select("
-            tb_guru.id_guru,
-            tb_guru.nip,
-            tb_guru.nama_lengkap,
-            tb_guru.jenis_kelamin,
-            tb_guru.foto,
-            COALESCE(COUNT(gm.id_guru_mapel), 0) AS jum_penugasan,
-            CASE WHEN COUNT(gm.id_guru_mapel) > 0 THEN 1 ELSE 0 END AS sudah
-        ", false)
-            ->join('tb_guru_mapel gm', $joinCond, 'left')
-            ->groupBy('tb_guru.id_guru, tb_guru.nip, tb_guru.nama_lengkap, tb_guru.jenis_kelamin, tb_guru.foto')
-            ->orderBy('tb_guru.nama_lengkap', 'ASC');
-
-        // --- Terapkan filter pencarian (nama_lengkap / nip) ---
         if ($q !== '') {
-            $builder->groupStart()
-                ->like('tb_guru.nama_lengkap', $q)
-                ->orLike('tb_guru.nip', $q)
+            // cari di NIP / Nama (gunakan LIKE)
+            $gq->groupStart()
+                ->like('nip', $q)
+                ->orLike('nama_lengkap', $q)
                 ->groupEnd();
         }
 
-        // --- Terapkan filter gender ---
-        if ($gender !== '') {
-            $builder->where('tb_guru.jenis_kelamin', $gender);
+        $rows = $gq->findAll();
+
+        // 3) Flag "sudah ada entri guru_tahun" untuk TA target (opsional kalau ada tabelnya)
+        $exists = [];
+        if ($taTargetId > 0) {
+            $existsRows = $gtModel
+                ->select('guru_id')
+                ->where('tahun_ajaran_id', $taTargetId)
+                ->groupBy('guru_id')
+                ->findAll();
+            foreach ($existsRows as $er) {
+                $exists[(int) $er['guru_id']] = true;
+            }
         }
 
-        $d_guru = $builder->findAll();
+        // 4) Flag "sudah punya mapel" — PER TA (pakai kolom yang benar!)
+        //   Catatan: di thread sebelumnya kolomnya adalah `id_tahun_ajaran`, bukan `tahun_ajaran_id`.
+        $hasMapel = [];
+        $mapelB = $gmModel->builder()
+            ->select('id_guru')
+            ->groupBy('id_guru');
 
-        // 4) Kirim ke view (ikutkan q & gender agar form tetap terisi)
+        // deteksi nama kolom TA pada tabel penugasan
+        $taCol = 'id_tahun_ajaran';
+        // kalau skema kamu lain (mis. tahun_ajaran_id), silakan override manual:
+        // $taCol = 'tahun_ajaran_id';
+
+        if ($taTargetId > 0) {
+            $mapelB->where($taCol, $taTargetId);
+        }
+
+        $mapelRows = $mapelB->get()->getResultArray();
+        foreach ($mapelRows as $mr) {
+            $hasMapel[(int) $mr['id_guru']] = true;
+        }
+
+        // 5) Sisipkan flag ke setiap guru (dipakai view)
+        $d_guru = array_map(function (array $g) use ($exists, $hasMapel) {
+            $gid = (int) $g['id_guru'];
+            $g['has_laporan_ta'] = !empty($exists[$gid]);   // sudah ada entri di TA target
+            $g['has_mapel']      = !empty($hasMapel[$gid]); // sudah punya mapel di TA target
+            return $g;
+        }, $rows);
+
         return view('pages/operator/data_guru', [
-            'title'           => 'Data Guru | SDN Talun 2 Kota Serang',
-            'sub_judul'       => 'Data Guru',
-            'nav_link'        => 'Data Guru',
-            'd_guru'          => $d_guru,
-            'idTaAktif'       => $idTaAktif,
-            'total_penugasan' => $totalPenugasan,
-            'q'               => $q,
-            'gender'          => $gender,
+            'title'        => 'Data Guru | SDN Talun 2 Kota Serang',
+            'sub_judul'    => 'Data Guru',
+            'nav_link'     => 'Data Guru',
+            'd_guru'       => $d_guru,
+            'q'            => $q,
+            'gender'       => $gender,
+            'tahunajaran'  => $taTargetId,
+            'totalGuru'    => count($d_guru),
         ]);
     }
 
@@ -930,6 +1132,14 @@ class OperatorController extends BaseController
                     'in_list'  => 'Status aktif hanya boleh 0 (nonaktif) atau 1 (aktif).'
                 ]
             ],
+
+            // + jabatan (opsional sesuai ENUM di migration Anda)
+            'jabatan' => [
+                'rules'  => 'permit_empty|in_list[Kepala Sekolah,Wakil Kepala,Guru,Wali Kelas,Operator,Staff]',
+                'errors' => [
+                    'in_list' => 'Jabatan tidak valid.'
+                ]
+            ],
         ];
 
         if (! $this->validate($rules)) {
@@ -946,6 +1156,12 @@ class OperatorController extends BaseController
         $noTelp       = trim((string) $req->getPost('no_telp'));
         $alamat       = trim((string) $req->getPost('alamat'));
         $statusActive = (int) $req->getPost('status_active');
+
+        // + ambil jabatan dari POST (opsional)
+        $jabatanPost  = trim((string) $req->getPost('jabatan'));
+        // whitelist kecil (opsional, karena sudah ada validasi in_list)
+        $whitelistJabatan = ['Kepala Sekolah', 'Wakil Kepala', 'Guru', 'Wali Kelas', 'Operator', 'Staff'];
+        $jabatan = in_array($jabatanPost, $whitelistJabatan, true) ? $jabatanPost : null;
 
         // ---------- CEK USER VALID (role guru & aktif) ----------
         $user = $this->UserModel
@@ -965,7 +1181,7 @@ class OperatorController extends BaseController
             return redirect()->back()->withInput();
         }
 
-        // ---------- CEK nip SUDAH ADA? (tambahan selain rules) ----------
+        // ---------- CEK nip SUDAH ADA? ----------
         $existByNip = $this->ModelGuru->where('nip', $nip)->first();
         if ($existByNip) {
             session()->setFlashdata('sweet_error', 'NIP sudah terdaftar.');
@@ -995,7 +1211,6 @@ class OperatorController extends BaseController
                 return redirect()->back()->withInput();
             }
         } else {
-            // pakai default; pastikan tersedia di /uploads
             $targetDefault = $uploadDir . DIRECTORY_SEPARATOR . $defaultName;
             if (! is_file($targetDefault)) {
                 @copy($defaultSrc, $targetDefault);
@@ -1014,12 +1229,12 @@ class OperatorController extends BaseController
             'alamat'        => $alamat,
             'foto'          => $fotoName,
             'status_active' => $statusActive,
+            'jabatan'       => $jabatan, // + jabatan
         ];
 
         try {
             $this->ModelGuru->insert($dataInsert);
         } catch (\Throwable $e) {
-            // rollback foto jika bukan default
             if ($fotoName && $fotoName !== $defaultName) {
                 @unlink($uploadDir . DIRECTORY_SEPARATOR . $fotoName);
             }
@@ -1030,30 +1245,40 @@ class OperatorController extends BaseController
         session()->setFlashdata('sweet_success', 'Data guru berhasil ditambahkan.');
         return redirect()->to(base_url('operator/data-guru'));
     }
+
     public function page_edit_guru(string $nip)
     {
-        // Ambil siswa dari SiswaModel saja (user_id ikut dari sini)
         $guru = $this->ModelGuru
-            ->select('tb_guru.*, tb_users.username AS user_name') // opsional join untuk tampilan nama user
+            ->select('tb_guru.*, tb_users.username AS user_name, tb_users.id_user AS fresh_user_id')
             ->join('tb_users', 'tb_users.id_user = tb_guru.user_id', 'left')
             ->where('tb_guru.nip', $nip)
             ->first();
 
-        if (! $guru) {
+        if (!$guru) {
             session()->setFlashdata('sweet_error', 'Data guru tidak ditemukan.');
             return redirect()->to(base_url('operator/data-guru'));
         }
 
-        $data = [
+        // Ambil hanya 1 user “terbaru” MILIK guru ini (berdasarkan relasi user_id yang sama)
+        // Artinya dropdown akan menampilkan 1 opsi: user yang saat ini ter-relasi + paling baru updated.
+        $optUsers = $this->UserModel
+            ->select('id_user, username, email, updated_at')
+            ->where('id_user', (int)($guru['user_id'] ?? 0))
+            ->orderBy('updated_at', 'DESC')
+            ->limit(1)
+            ->findAll();
+
+        return view('pages/operator/edit_guru', [
             'title'      => 'Edit Guru | SDN Talun 2 Kota Serang',
             'sub_judul'  => 'Edit Guru',
             'nav_link'   => 'Edit Guru',
-            'd_guru'      => $guru,                           // ← ada 'user_id' dari SiswaModel
+            'd_guru'     => $guru,
+            'optUsers'   => $optUsers, // ← dropdown source
             'validation' => \Config\Services::validation(),
-        ];
-
-        return view('pages/operator/edit_guru', $data);
+        ]);
     }
+
+
     public function aksi_update_guru(string $nipParam)
     {
         $nip = urldecode($nipParam);
@@ -1129,8 +1354,15 @@ class OperatorController extends BaseController
                     'in_list'  => 'Status aktif hanya boleh 0 (Nonaktif) atau 1 (Aktif).',
                 ],
             ],
-        ];
 
+            // ==== TAMBAHAN: JABATAN (opsional, sesuai ENUM) ====
+            'jabatan' => [
+                'rules'  => 'permit_empty|in_list[Kepala Sekolah,Wakil Kepala,Guru,Wali Kelas,Operator,Staff]',
+                'errors' => [
+                    'in_list' => 'Jabatan tidak valid.',
+                ],
+            ],
+        ];
 
         if (! $this->validate($rules)) {
             session()->setFlashdata('sweet_error', 'Validasi gagal. Periksa kembali isian Anda.');
@@ -1145,6 +1377,11 @@ class OperatorController extends BaseController
         $noTelp       = trim((string)$this->request->getPost('no_telp'));
         $alamat       = trim((string)$this->request->getPost('alamat'));
         $statusActive = (int)$this->request->getPost('status_active');
+
+        // Ambil & bersihkan jabatan dari POST (opsional)
+        $jabatanPost  = trim((string)$this->request->getPost('jabatan'));
+        $whitelistJabatan = ['Kepala Sekolah', 'Wakil Kepala', 'Guru', 'Wali Kelas', 'Operator', 'Staff'];
+        $jabatan      = $jabatanPost !== '' && in_array($jabatanPost, $whitelistJabatan, true) ? $jabatanPost : null;
 
         // (opsional) pastikan user masih role guru
         $user = $this->UserModel->select('id_user, role')->where('id_user', $userId)->first();
@@ -1188,6 +1425,7 @@ class OperatorController extends BaseController
             'alamat'        => $alamat,
             'foto'          => $fotoBaru,
             'status_active' => $statusActive,
+            'jabatan'       => $jabatan,     // <<< TAMBAHKAN INI
         ];
 
         try {
@@ -1200,29 +1438,338 @@ class OperatorController extends BaseController
         session()->setFlashdata('sweet_success', 'Data guru berhasil diperbarui.');
         return redirect()->to(base_url('operator/data-guru'));
     }
+
+    // Controller: page_detail_guru (versi pakai ModelMatpel saja)
     public function page_detail_guru(string $nipRaw)
     {
         $nip = urldecode(trim($nipRaw));
 
+        // --- Profil guru
         $guru = $this->ModelGuru
-            ->select('g.*, u.username AS user_name')
+            ->select('g.*, g.jabatan AS jabatan, u.username AS user_name')
             ->from('tb_guru AS g')
-            ->join('tb_users AS u', 'u.id_user = g.user_id', 'left') // sesuaikan jika tabelmu bernama tb_users
+            ->join('tb_users AS u', 'u.id_user = g.user_id', 'left')
             ->where('g.nip', $nip)
             ->first();
 
-        if (! $guru) {
+        if (!$guru) {
             session()->setFlashdata('sweet_error', 'Data guru tidak ditemukan.');
             return redirect()->to(base_url('operator/data-guru'));
         }
+        $idGuru = (int)$guru['id_guru'];
+
+        // --- Tabel penugasan (listing)
+        $builder = $this->ModelGuruMatpel
+            ->select('
+            tb_guru_mapel.id_guru,
+            tb_guru_mapel.id_mapel,
+            tb_guru_mapel.id_tahun_ajaran,
+            tb_guru_mapel.id_kelas,
+            tb_guru_mapel.jam_per_minggu,
+            tb_guru_mapel.keterangan,
+            m.nama AS mapel,
+            k.nama_kelas AS kelas,
+            ta.start_date, ta.end_date, ta.semester
+        ')
+            ->join('tb_mapel m', 'm.id_mapel = tb_guru_mapel.id_mapel', 'inner')
+            ->join('tb_tahun_ajaran ta', 'ta.id_tahun_ajaran = tb_guru_mapel.id_tahun_ajaran', 'inner')
+            ->join('tb_kelas k', 'k.id_kelas = tb_guru_mapel.id_kelas', 'inner')
+            ->where('tb_guru_mapel.id_guru', $idGuru);
+
+        // (Opsional) jika pakai soft deletes pada tb_guru_mapel
+        if (property_exists($this->ModelGuruMatpel, 'useSoftDeletes') && $this->ModelGuruMatpel->useSoftDeletes) {
+            $builder->where('tb_guru_mapel.deleted_at', null);
+        }
+
+        $raw = $builder
+            ->orderBy('ta.start_date', 'DESC')
+            ->orderBy('m.nama', 'ASC')
+            ->orderBy('k.nama_kelas', 'ASC')
+            ->findAll();
+
+        // --- GROUP: gabungkan kelas per (mapel, tahun_ajaran)
+        $grouped = []; // key: "$idMapel|$idTa"
+        foreach ($raw as $r) {
+            $idMap = (int)($r['id_mapel'] ?? 0);
+            $idTa  = (int)($r['id_tahun_ajaran'] ?? 0);
+            $key   = $idMap . '|' . $idTa;
+
+            if (!isset($grouped[$key])) {
+                $y1 = !empty($r['start_date']) ? (new \DateTime($r['start_date']))->format('Y') : '';
+                $y2 = !empty($r['end_date'])   ? (new \DateTime($r['end_date']))->format('Y')   : '';
+                $sem = trim((string)($r['semester'] ?? ''));
+                $tahunAjar = $y1 && $y2 ? ($y1 . '/' . $y2 . ($sem !== '' ? ' - ' . $sem : '')) : ($sem ?: '');
+
+                $grouped[$key] = [
+                    'id_mapel'        => $idMap,
+                    'mapel'           => (string)($r['mapel'] ?? ''),
+                    'id_tahun_ajaran' => $idTa,
+                    'tahun_ajaran'    => $tahunAjar,
+                    // asumsikan jam/ket seragam untuk semua kelas dalam kombinasi
+                    'jam_per_minggu'  => (int)($r['jam_per_minggu'] ?? 0),
+                    'keterangan'      => (string)($r['keterangan'] ?? ''),
+                    'kelas_list'      => [],
+                    'kelas_ids'       => [],
+                ];
+            }
+
+            $grouped[$key]['kelas_list'][] = (string)($r['kelas'] ?? '');
+            $grouped[$key]['kelas_ids'][]  = (int)($r['id_kelas'] ?? 0);
+        }
+
+        // sort & unique kelas di tiap grup (jaga-jaga)
+        foreach ($grouped as &$g) {
+            $pairs = array_map(fn($id, $nama) => ['id' => $id, 'nama' => $nama], $g['kelas_ids'], $g['kelas_list']);
+            usort($pairs, fn($a, $b) => strcmp($a['nama'], $b['nama']));
+            $g['kelas_ids']  = array_values(array_unique(array_column($pairs, 'id')));
+            $g['kelas_list'] = array_values(array_unique(array_column($pairs, 'nama')));
+        }
+        unset($g);
+
+        $penugasanGrouped = array_values($grouped);
+
+        // --- Rows per baris (legacy, jika masih dipakai tabel lama)
+        $penugasanRows = array_map(function (array $r) {
+            $y1 = !empty($r['start_date']) ? (new \DateTime($r['start_date']))->format('Y') : '';
+            $y2 = !empty($r['end_date'])   ? (new \DateTime($r['end_date']))->format('Y')   : '';
+            $sem = trim((string)($r['semester'] ?? ''));
+            $tahunAjar = $y1 && $y2 ? ($y1 . '/' . $y2 . ($sem !== '' ? ' - ' . $sem : '')) : ($sem ?: '');
+            return [
+                'id_guru'         => (int)($r['id_guru'] ?? 0),
+                'id_mapel'        => (int)($r['id_mapel'] ?? 0),
+                'id_kelas'        => (int)($r['id_kelas'] ?? 0),
+                'id_tahun_ajaran' => (int)($r['id_tahun_ajaran'] ?? 0),
+                'mapel'           => (string)($r['mapel'] ?? ''),
+                'kelas'           => (string)($r['kelas'] ?? ''),
+                'tahun_ajaran'    => $tahunAjar,
+                'jam_per_minggu'  => (int)($r['jam_per_minggu'] ?? 0),
+                'keterangan'      => (string)($r['keterangan'] ?? ''),
+            ];
+        }, $raw);
+
+        // --- Opsi dropdown untuk form edit
+        $optMapel = $this->ModelMatpel->select('id_mapel, nama')->orderBy('nama', 'ASC')->findAll();
+        $optKelas = $this->ModelKelas->select('id_kelas, nama_kelas')->orderBy('nama_kelas', 'ASC')->findAll();
+        $optTahunAjaran = $this->TahunAjaran
+            ->select('id_tahun_ajaran, start_date, end_date, semester, tahun')
+            ->orderBy('start_date', 'DESC')->findAll();
+
+        // --- Tentukan baris yang sedang diedit
+        $qMapel = (int)($this->request->getGet('mapel') ?? 0);
+        $qKelas = (int)($this->request->getGet('kelas') ?? 0);
+        $qTa    = (int)($this->request->getGet('ta') ?? 0);
+
+        $gmEdit = null;
+        if ($qMapel && $qKelas && $qTa) {
+            $gmEdit = $this->ModelGuruMatpel
+                ->where([
+                    'id_guru'         => $idGuru,
+                    'id_mapel'        => $qMapel,
+                    'id_kelas'        => $qKelas,
+                    'id_tahun_ajaran' => $qTa,
+                ])->first();
+        }
+
+        if (!$gmEdit && !empty($penugasanRows)) {
+            $first  = $penugasanRows[0];
+            $gmEdit = [
+                'id_guru'         => $idGuru,
+                'id_mapel'        => $first['id_mapel'],
+                'id_kelas'        => $first['id_kelas'],
+                'id_tahun_ajaran' => $first['id_tahun_ajaran'],
+                'jam_per_minggu'  => $first['jam_per_minggu'],
+                'keterangan'      => $first['keterangan'],
+            ];
+        }
+
+        // --- Kumpulkan semua kelas (multi-kelas) utk kombinasi yang aktif di form
+        $gmEdit['id_kelas_list'] = [];
+        if (!empty($gmEdit['id_mapel']) && !empty($gmEdit['id_tahun_ajaran'])) {
+            $kelasList = $this->ModelGuruMatpel
+                ->select('id_kelas')
+                ->where([
+                    'id_guru'         => $idGuru,
+                    'id_mapel'        => (int)$gmEdit['id_mapel'],
+                    'id_tahun_ajaran' => (int)$gmEdit['id_tahun_ajaran'],
+                ])
+                // ->where('deleted_at', null) // jika soft delete
+                ->orderBy('id_kelas', 'ASC')
+                ->findColumn('id_kelas');
+
+            $kelasList = array_values(array_unique(array_map('intval', $kelasList ?? [])));
+            if (empty($kelasList) && !empty($gmEdit['id_kelas'])) {
+                $kelasList = [(int)$gmEdit['id_kelas']];
+            }
+            $gmEdit['id_kelas_list'] = $kelasList;
+        }
 
         return view('pages/operator/detail_guru', [
-            'title'     => 'Detail Guru | SDN Talun 2 Kota Serang',
-            'sub_judul' => 'Detail Guru',
-            'nav_link'  => 'Data Guru',
-            'guru'      => $guru,
+            'title'             => 'Detail Guru | SDN Talun 2 Kota Serang',
+            'sub_judul'         => 'Detail Guru',
+            'nav_link'          => 'Data Guru',
+            'guru'              => $guru,
+            'penugasanRows'     => $penugasanRows,     // per baris (lama)
+            'penugasanGrouped'  => $penugasanGrouped,  // ← kirim ke view: satu mapel/TA berisi banyak kelas
+            'optMapel'          => $optMapel,
+            'optKelas'          => $optKelas,
+            'optTahunAjaran'    => $optTahunAjaran,
+            'gmEdit'            => $gmEdit,            // menyertakan 'id_kelas_list' untuk form multi-kelas
         ]);
     }
+
+
+
+    public function aksi_detail_update_guru_mapel(string $nipParam)
+    {
+        $nip = urldecode(trim($nipParam));
+
+        // 1) Lock guru
+        $guru = $this->ModelGuru->select('id_guru')->where('nip', $nip)->first();
+        if (!$guru) {
+            return redirect()->to(base_url('operator/data-guru'))
+                ->with('sweet_error', 'Guru tidak ditemukan.');
+        }
+        $idGuru = (int)$guru['id_guru'];
+
+        // 2) Validasi (id_kelas opsional → biar edit mapel tidak menghapus kelas secara tidak sengaja)
+        $rules = [
+            'id_mapel'        => 'required|is_natural_no_zero',
+            'id_tahun_ajaran' => 'required|is_natural_no_zero',
+            'id_kelas'        => 'permit_empty',          // ← opsional
+            'id_kelas.*'      => 'is_natural_no_zero',
+            'jam_per_minggu'  => 'required|integer|greater_than_equal_to[0]|less_than_equal_to[40]',
+            'keterangan'      => 'permit_empty|max_length[190]',
+            // konteks lama (optional)
+            'old_id_mapel'        => 'permit_empty|is_natural',
+            'old_id_tahun_ajaran' => 'permit_empty|is_natural',
+        ];
+        if (!$this->validate($rules)) {
+            return redirect()->back()->withInput()
+                ->with('errors', $this->validator->getErrors())
+                ->with('sweet_error', 'Validasi gagal. Periksa kembali isian Anda.');
+        }
+
+        // 3) Ambil input baru
+        $idMapel = (int)$this->request->getPost('id_mapel');
+        $idTa    = (int)$this->request->getPost('id_tahun_ajaran');
+        $jam     = (int)$this->request->getPost('jam_per_minggu');
+        $ket     = ($t = trim((string)$this->request->getPost('keterangan'))) !== '' ? $t : null;
+
+        // Konteks lama (bisa 0 kalau tidak dikirim)
+        $oldMapel = (int)($this->request->getPost('old_id_mapel') ?? 0);
+        $oldTa    = (int)($this->request->getPost('old_id_tahun_ajaran') ?? 0);
+
+        // 4) Validasi FK master sederhana
+        if (!$this->ModelMatpel->find($idMapel)) {
+            return redirect()->back()->withInput()->with('sweet_error', 'Mapel tidak valid.');
+        }
+        if (!$this->TahunAjaran->find($idTa)) {
+            return redirect()->back()->withInput()->with('sweet_error', 'Tahun ajaran tidak valid.');
+        }
+
+        $gmModel = $this->ModelGuruMatpel;
+
+        // 5) Transaksi
+        $db = \Config\Database::connect();
+        $db->transBegin();
+
+        try {
+            // A) JIKA MAPEL BERUBAH → hapus semua baris lama (mapel sebelumnya) pada TA terkait
+            //    Contoh: sebelumnya MTK (2 kelas) → sekarang B.Indo (4 kelas) → hapus semua baris MTK (2 kelas)
+            if ($oldMapel > 0 && $oldMapel !== $idMapel) {
+                // Jika old TA tidak terkirim, asumsikan tetap pakai TA yang sama dengan input
+                $taTarget = $oldTa > 0 ? $oldTa : $idTa;
+
+                $gmModel->where([
+                    'id_guru'         => $idGuru,
+                    'id_mapel'        => $oldMapel,
+                    'id_tahun_ajaran' => $taTarget,
+                ])->delete(); // bila soft delete aktif -> set deleted_at
+            }
+
+            // B) Proses mapel BARU secara additive (tambah & update; tidak menghapus yang tidak dikirim)
+            // Ambil existing rows untuk kombinasi BARU
+            $existing = $gmModel->select('id_guru_mapel, id_kelas, jam_per_minggu, keterangan')
+                ->where([
+                    'id_guru'         => $idGuru,
+                    'id_mapel'        => $idMapel,
+                    'id_tahun_ajaran' => $idTa,
+                ])->findAll();
+
+            $existByKelas = [];
+            foreach ($existing as $r) {
+                $existByKelas[(int)$r['id_kelas']] = $r;
+            }
+            $existingKelasIds = array_keys($existByKelas);
+
+            // Kelas dari form (opsional)
+            $kelasPost = $this->request->getPost('id_kelas');
+            $toInsert  = [];
+            $toKeep    = $existingKelasIds;
+
+            if (!is_null($kelasPost)) {
+                if (!is_array($kelasPost)) $kelasPost = [$kelasPost];
+
+                $kelasArr = array_values(array_unique(array_filter(array_map(static function ($v) {
+                    $n = (int)$v;
+                    return $n > 0 ? $n : null;
+                }, $kelasPost))));
+
+                if (!empty($kelasArr)) {
+                    // (opsional) validasi id_kelas yang dikirim
+                    $validKelasIds = $this->ModelKelas->whereIn('id_kelas', $kelasArr)->findColumn('id_kelas');
+                    $validKelasIds = array_map('intval', $validKelasIds ?? []);
+                    if (count($validKelasIds) !== count($kelasArr)) {
+                        $db->transRollback();
+                        return redirect()->back()->withInput()->with('sweet_error', 'Terdapat id_kelas yang tidak valid.');
+                    }
+                }
+
+                // ADDITIVE: hanya tambah yang baru, tidak menghapus yang tidak dikirim
+                $toInsert = array_diff($kelasArr, $existingKelasIds);
+                $toKeep   = array_unique(array_merge($existingKelasIds, array_intersect($kelasArr, $existingKelasIds)));
+            }
+
+            // Insert kelas baru untuk mapel BARU
+            foreach ($toInsert as $idKelasNew) {
+                $gmModel->insert([
+                    'id_guru'         => $idGuru,
+                    'id_mapel'        => $idMapel,
+                    'id_tahun_ajaran' => $idTa,
+                    'id_kelas'        => (int)$idKelasNew,
+                    'jam_per_minggu'  => $jam,
+                    'keterangan'      => $ket,
+                ]);
+            }
+
+            // Update jam/keterangan untuk semua baris yang dipertahankan di mapel BARU
+            if (!empty($toKeep)) {
+                $rowsToKeep = $gmModel->select('id_guru_mapel')
+                    ->where([
+                        'id_guru'         => $idGuru,
+                        'id_mapel'        => $idMapel,
+                        'id_tahun_ajaran' => $idTa,
+                    ])->whereIn('id_kelas', $toKeep)->findColumn('id_guru_mapel');
+
+                foreach ($rowsToKeep as $pk) {
+                    $gmModel->update((int)$pk, [
+                        'jam_per_minggu' => $jam,
+                        'keterangan'     => $ket,
+                    ]);
+                }
+            }
+
+            $db->transCommit();
+        } catch (\Throwable $e) {
+            $db->transRollback();
+            return redirect()->back()->withInput()
+                ->with('sweet_error', 'Gagal menyimpan penugasan: ' . $e->getMessage());
+        }
+
+        return redirect()->to(base_url('operator/data-guru'))
+            ->with('sweet_success', 'Penugasan berhasil diperbarui. Mapel lama (jika ada) telah dihapus.');
+    }
+
     public function delete_data_guru($id = null)
     {
         $id = (int) $id;
@@ -1279,6 +1826,39 @@ class OperatorController extends BaseController
 
         return redirect()->to(base_url('operator/data-guru'));
     }
+    // routes:
+    // $routes->delete('operator/detail-guru/(:segment)/delete-all', 'Operator::aksi_hapus_semua_guru_mapel/$1');
+
+    public function aksi_hapus_semua_guru_mapel(string $nipParam)
+    {
+        $nip = urldecode(trim($nipParam));
+
+        // 1) Lock id_guru by NIP
+        $guru = $this->ModelGuru->select('id_guru, nip')->where('nip', $nip)->first();
+        if (! $guru) {
+            session()->setFlashdata('sweet_error', 'Guru tidak ditemukan.');
+            return redirect()->to(base_url('operator/data-guru'));
+        }
+        $idGuru = (int)$guru['id_guru'];
+
+        // 2) Hapus semua penugasan mapel milik id_guru (semua mapel/kelas/TA)
+        $db = \Config\Database::connect();
+        $db->transStart();
+
+        // pastikan model menunjuk ke tabel penugasan (tb_guru_mapel / tbl_guru_mapel sesuai skema Anda)
+        $this->ModelGuruMatpel->where('id_guru', $idGuru)->delete();
+
+        $db->transComplete();
+
+        if ($db->transStatus() === false) {
+            session()->setFlashdata('sweet_error', 'Gagal menghapus semua penugasan mapel guru.');
+            return redirect()->back();
+        }
+
+        session()->setFlashdata('sweet_success', 'Semua penugasan mapel guru berhasil dihapus.');
+        return redirect()->to(base_url('operator/data-guru'));
+    }
+
 
 
 
@@ -1289,10 +1869,8 @@ class OperatorController extends BaseController
     {
         $allUsers = $this->UserModel->findAll();
 
-        $q       = trim((string) $this->request->getGet('q'));
-        $role    = strtolower(trim((string) $this->request->getGet('role'))); // <— konsisten dgn form
-        $page    = max(1, (int) $this->request->getGet('page'));
-        $perPage = (int) $this->request->getGet('per_page') ?: 10;
+        $q    = trim((string) $this->request->getGet('q'));
+        $role = strtolower(trim((string) $this->request->getGet('role'))); // dari form
 
         // terima hanya role yang valid
         $allowedRoles = ['operator', 'guru', 'siswa'];
@@ -1300,44 +1878,47 @@ class OperatorController extends BaseController
             $role = '';
         }
 
+        // filter
         $filtered = array_filter($allUsers, function ($row) use ($q, $role) {
             $ok = true;
 
             if ($q !== '') {
-                $u = strtolower((string)($row['username'] ?? ''));
-                $e = strtolower((string)($row['email'] ?? ''));
+                $u = strtolower(trim((string)($row['username'] ?? '')));
+                $e = strtolower(trim((string)($row['email'] ?? '')));
                 $k = strtolower($q);
                 $ok = (strpos($u, $k) !== false) || (strpos($e, $k) !== false);
             }
 
             if ($ok && $role !== '') {
-                $r = strtolower((string)($row['role'] ?? ''));
+                $r = strtolower(trim((string)($row['role'] ?? '')));
                 $ok = ($r === $role);
             }
 
             return $ok;
         });
 
+        // urutkan by username (case-insensitive)
         usort($filtered, fn($a, $b) => strcasecmp((string)($a['username'] ?? ''), (string)($b['username'] ?? '')));
 
-        $total   = count($filtered);
-        $pages   = (int) ceil(max(1, $total) / max(1, $perPage));
-        $offset  = ($page - 1) * $perPage;
-        $pageData = array_slice($filtered, $offset, $perPage);
+        // tanpa pagination: kirim semua
+        $pageData = array_values($filtered); // reindex
 
         return view('pages/operator/data_user', [
             'title'     => 'Data User | SDN Talun 2 Kota Serang',
             'sub_judul' => 'Data Pengguna',
             'nav_link'  => 'Data User',
-            'd_user'    => $pageData,
+            'd_user'    => $pageData,   // semua data tampil
             'q'         => $q,
             'role'      => $role,
-            'page'      => $page,
-            'per_page'  => $perPage,
-            'total'     => $total,
-            'pages'     => $pages,
+            // metadata opsional (tidak dipakai di view)
+            'total'     => count($pageData),
+            'pages'     => 1,
+            'page'      => 1,
+            'per_page'  => 'all',
         ]);
     }
+
+
     public function page_tambah_user()
     {
         $allUsers = $this->UserModel->findAll();
@@ -1547,6 +2128,28 @@ class OperatorController extends BaseController
         session()->setFlashdata('sweet_success', 'Data user berhasil diperbarui.');
         return redirect()->to(base_url('operator/data-user'));
     }
+    public function aksi_delete_data_user(string $idUserRaw)
+    {
+        $idUser = (int) $idUserRaw;
+
+        // --- Cek data user existing ---
+        $existing = $this->UserModel->where('id_user', $idUser)->first();
+        if (!$existing) {
+            session()->setFlashdata('sweet_error', 'Data user tidak ditemukan.');
+            return redirect()->to(base_url('operator/data-user'));
+        }
+
+        try {
+            $this->UserModel->delete($idUser);
+        } catch (\Throwable $e) {
+            session()->setFlashdata('sweet_error', 'Gagal menghapus data user: ' . $e->getMessage());
+            return redirect()->back();
+        }
+
+        session()->setFlashdata('sweet_success', 'Data user berhasil dihapus.');
+        return redirect()->to(base_url('operator/data-user'));
+    }
+
     public function page_detail_user(string $idUserRaw)
     {
         $idUser = (int) urldecode(trim($idUserRaw)); // id numerik
@@ -2258,24 +2861,30 @@ class OperatorController extends BaseController
     }
 
     // GURU MAPEL
-    public function page_tambah_guru_mapel($nipGuru = null)
+    // di class controller (mis. Operator)
+    private array $blockedJabatan = ['kepala sekolah', 'wakil kepala', 'operator', 'staff'];
+
+    private function isJabatanBlocked(?string $jabatan): bool
     {
-        // Inisialisasi model
-        $guruModel   = new \App\Models\ModelGuru();        // id_guru, nama_lengkap, nip
-        $mapelModel  = new \App\Models\ModelMatPel();      // id_mapel, nama, kode, is_active
-        $taModel     = new \App\Models\TahunAjaranModel(); // id_tahun_ajaran, tahun, semester, is_active
-        $kelasModel  = new \App\Models\KelasModel();       // id_kelas, nama_kelas, tingkat, jurusan
-        $gmModel     = new \App\Models\GuruMatpel();       // tb_guru_mapel
+        $j = mb_strtolower(trim((string)$jabatan), 'UTF-8');
+        return in_array($j, $this->blockedJabatan, true);
+    }
 
-        // Dropdown dasar
-        $guruList  = $guruModel->select('id_guru, nama_lengkap, nip')
-            ->orderBy('nama_lengkap', 'ASC')->findAll();
-        $tahunList = $taModel->select('id_tahun_ajaran, tahun, semester, is_active')
-            ->orderBy('is_active', 'DESC')->orderBy('tahun', 'DESC')->findAll();
-        $kelasList = $kelasModel->select('id_kelas, nama_kelas, tingkat, jurusan')
-            ->orderBy('tingkat', 'ASC')->orderBy('nama_kelas', 'ASC')->findAll();
+    public function page_tambah_guru_mapel(?string $nipGuru = null)
+    {
+        // --- Model
+        $guruModel  = new \App\Models\ModelGuru();        // tb_guru
+        $mapelModel = new \App\Models\ModelMatpel();      // tb_mapel
+        $taModel    = new \App\Models\TahunAjaranModel(); // tb_tahun_ajaran
+        $kelasModel = new \App\Models\KelasModel();       // tb_kelas
+        $gmModel    = new \App\Models\GuruMatpel();       // tb_guru_mapel
 
-        // Cari TA aktif (opsional)
+        // --- Dropdown dasar
+        $guruList  = $guruModel->select('id_guru, nama_lengkap, nip')->orderBy('nama_lengkap', 'ASC')->findAll();
+        $tahunList = $taModel->select('id_tahun_ajaran, tahun, semester, is_active')->orderBy('is_active', 'DESC')->orderBy('tahun', 'DESC')->findAll();
+        $kelasList = $kelasModel->select('id_kelas, nama_kelas, tingkat, jurusan')->orderBy('tingkat', 'ASC')->orderBy('nama_kelas', 'ASC')->findAll();
+
+        // --- TA aktif
         $idTaAktif = null;
         foreach ($tahunList as $t) {
             if ((int)($t['is_active'] ?? 0) === 1) {
@@ -2284,12 +2893,12 @@ class OperatorController extends BaseController
             }
         }
 
-        // Preselect & GUARD jika NIP diberikan
+        // --- Preselect & guard bila NIP diberikan
         $d_row  = [];
         $idGuru = null;
 
         if (!empty($nipGuru)) {
-            $guru = $guruModel->where('nip', (string)$nipGuru)->first();
+            $guru = $guruModel->select('id_guru, jabatan, nama_lengkap, nip')->where('nip', (string)$nipGuru)->first();
             if (!$guru) {
                 session()->setFlashdata('sweet_error', 'Guru dengan NIP ' . esc($nipGuru) . ' tidak ditemukan.');
                 return redirect()->to(base_url('operator/data-guru'));
@@ -2297,68 +2906,64 @@ class OperatorController extends BaseController
 
             $idGuru = (int)$guru['id_guru'];
 
-            // GUARD: tolak jika sudah ada penugasan pada TA aktif (atau global bila diinginkan)
-            $sudahAda = false;
+            // GUARD: blokir berdasarkan jabatan (case-insensitive)
+            $blokir = in_array(
+                mb_strtolower(trim((string)($guru['jabatan'] ?? '')), 'UTF-8'),
+                ['kepala sekolah', 'wakil kepala', 'operator', 'staff'],
+                true
+            );
+            if ($blokir) {
+                session()->setFlashdata('sweet_error', 'Jabatan ini tidak diperbolehkan memiliki penugasan mapel.');
+                return redirect()->to(base_url('operator/data-guru'));
+            }
+
+            // GUARD: kalau sudah punya penugasan pada TA aktif, tolak (opsional)
             if ($idTaAktif) {
                 $sudahAda = $gmModel->where([
                     'id_guru'         => $idGuru,
                     'id_tahun_ajaran' => $idTaAktif,
                 ])->countAllResults(true) > 0;
-            } else {
-                // Guard global (jika tidak pakai TA aktif)
-                // $sudahAda = $gmModel->where('id_guru', $idGuru)->countAllResults(true) > 0;
-            }
 
-            if ($sudahAda) {
-                session()->setFlashdata(
-                    'sweet_error',
-                    'Guru ini sudah memiliki penugasan' . ($idTaAktif ? ' pada Tahun Ajaran aktif.' : '.')
-                );
-                return redirect()->to(base_url('operator/data-guru'));
+                if ($sudahAda) {
+                    session()->setFlashdata('sweet_error', 'Guru ini sudah memiliki penugasan pada Tahun Ajaran aktif.');
+                    return redirect()->to(base_url('operator/data-guru'));
+                }
             }
 
             // Preselect form
             $d_row['id_guru'] = (string)$idGuru;
-            if ($idTaAktif) {
-                $d_row['id_tahun_ajaran'] = (string)$idTaAktif;
-            }
+            if ($idTaAktif) $d_row['id_tahun_ajaran'] = (string)$idTaAktif;
         }
 
-        // === FILTER MAPEL: hanya mapel AKTIF dan belum dimiliki guru ini (opsional: pada TA aktif) ===
+        // --- Filter mapel: hanya aktif & belum dimiliki guru (di TA aktif jika ada $idGuru)
         if ($idGuru) {
-            // Taruh filter penugasan di ON agar tetap LEFT JOIN
             $on = 'gm.id_mapel = tb_mapel.id_mapel AND gm.id_guru = ' . (int)$idGuru;
-            if ($idTaAktif) {
-                $on .= ' AND gm.id_tahun_ajaran = ' . (int)$idTaAktif;
-            }
-            // Jika pakai SoftDeletes di tb_guru_mapel:
-            // $on .= ' AND gm.deleted_at IS NULL';
+            if ($idTaAktif) $on .= ' AND gm.id_tahun_ajaran = ' . (int)$idTaAktif;
+            // Jika soft deletes di tb_guru_mapel: $on .= ' AND gm.deleted_at IS NULL';
 
             $mapelList = $mapelModel
                 ->select('tb_mapel.id_mapel, tb_mapel.nama, tb_mapel.kode')
                 ->join('tb_guru_mapel gm', $on, 'left')
-                ->where('gm.id_mapel', null)                // belum dimiliki guru ini (di TA aktif bila diset)
-                ->where('tb_mapel.is_active', 1)        // HANYA MAPEL AKTIF  ← ubah ke is_active jika beda
-                // ->where('tb_mapel.deleted_at', null)      // jika tb_mapel pakai SoftDeletes
+                ->where('gm.id_mapel', null)     // belum dimiliki guru ini (pada TA aktif bila diset)
+                ->where('tb_mapel.is_active', 1) // hanya mapel aktif
                 ->orderBy('tb_mapel.nama', 'ASC')
                 ->findAll();
         } else {
-            // Tanpa idGuru → tampilkan hanya mapel aktif (tanpa filter penugasan)
+            // Tanpa idGuru → tampilkan mapel aktif (tanpa filter penugasan)
             $mapelList = $mapelModel
                 ->select('id_mapel, nama, kode')
-                ->where('is_active', 1)                 // HANYA MAPEL AKTIF  ← ubah ke is_active jika beda
-                // ->where('deleted_at', null)               // jika tb_mapel pakai SoftDeletes
+                ->where('is_active', 1)
                 ->orderBy('nama', 'ASC')
                 ->findAll();
         }
 
-        // Kirim ke view
+        // --- Kirim ke view
         return view('pages/operator/guru_mapel', [
             'title'      => 'Tambah Guru Mapel | SDN Talun 2 Kota Serang',
             'sub_judul'  => 'Tambah Guru Mapel',
             'nav_link'   => 'Tambah Guru Mapel',
             'guruList'   => $guruList,
-            'mapelList'  => $mapelList,   // ← hanya mapel aktif & belum dimiliki guru
+            'mapelList'  => $mapelList,
             'tahunList'  => $tahunList,
             'kelasList'  => $kelasList,
             'd_row'      => $d_row,
@@ -2366,190 +2971,112 @@ class OperatorController extends BaseController
         ]);
     }
 
+
     public function aksi_tambah_guru_mapel()
     {
         $req = $this->request;
 
-        // ---------- VALIDASI DASAR ----------
+        // --- Validasi dasar
         $rules = [
             'id_guru'         => 'required|is_natural_no_zero',
             'id_mapel'        => 'required|is_natural_no_zero',
             'id_tahun_ajaran' => 'required|is_natural_no_zero',
-            'id_kelas'        => 'required|is_natural_no_zero',
-            'jam_per_minggu'  => 'required|integer|greater_than_equal_to[0]|less_than_equal_to[40]',
-            'keterangan'      => 'permit_empty|max_length[255]',
+            'jam_per_minggu'  => 'required|is_natural', // boleh 0
+            'id_kelas'        => 'required'             // array wajib ada
         ];
-        $labels = [
-            'id_guru'         => ['required' => 'ID Guru wajib diisi.', 'is_natural_no_zero' => 'ID Guru tidak valid.'],
-            'id_mapel'        => ['required' => 'Mapel wajib dipilih.', 'is_natural_no_zero' => 'Mapel tidak valid.'],
-            'id_tahun_ajaran' => ['required' => 'Tahun ajaran wajib dipilih.', 'is_natural_no_zero' => 'Tahun ajaran tidak valid.'],
-            'id_kelas'        => ['required' => 'Kelas wajib dipilih.', 'is_natural_no_zero' => 'Kelas tidak valid.'],
-            'jam_per_minggu'  => [
-                'required' => 'Jam/minggu wajib diisi.',
-                'integer' => 'Jam/minggu harus bilangan bulat.',
-                'greater_than_equal_to' => 'Jam/minggu minimal 0.',
-                'less_than_equal_to'   => 'Jam/minggu maksimal 40.'
-            ],
-            'keterangan'      => ['max_length' => 'Keterangan maksimal 255 karakter.'],
-        ];
-
-        if (!$this->validate($rules, $labels)) {
-            session()->setFlashdata('sweet_error', 'Validasi gagal. Periksa kembali isian Anda.');
+        if (! $this->validate($rules)) {
             return redirect()->back()->withInput()->with('errors', $this->validator->getErrors());
         }
 
-        // ---------- AMBIL INPUT ----------
-        $idGuru  = (int) $req->getPost('id_guru');
-        $idMapel = (int) $req->getPost('id_mapel');
-        $idTA    = (int) $req->getPost('id_tahun_ajaran');
-        $idKelas = (int) $req->getPost('id_kelas');
-        $jam     = (int) $req->getPost('jam_per_minggu');
-        $ket     = trim((string) $req->getPost('keterangan'));
+        // --- Ambil data
+        $idGuru    = (int)$req->getPost('id_guru');
+        $idMapel   = (int)$req->getPost('id_mapel');
+        $idTa      = (int)$req->getPost('id_tahun_ajaran');
+        $jam       = (int)$req->getPost('jam_per_minggu');
+        $ket       = (string)$req->getPost('keterangan');
 
-        // ---------- CEK FK ----------
-        $guruModel   = new \App\Models\ModelGuru();
-        $mapelModel  = new \App\Models\ModelMatPel();
-        $taModel     = new \App\Models\TahunAjaranModel();
-        $kelasModel  = new \App\Models\KelasModel();
+        // id_kelas sebagai array
+        $kelasArr  = $req->getPost('id_kelas'); // bisa string atau array
 
-        if (!$guruModel->find($idGuru)) {
-            session()->setFlashdata('sweet_error', 'ID Guru tidak sesuai / tidak ditemukan.');
-            return redirect()->back()->withInput()->with('errors', ['id_guru' => 'ID Guru tidak ditemukan.']);
-        }
-        if (!$mapelModel->find($idMapel)) {
-            session()->setFlashdata('sweet_error', 'Mata pelajaran tidak ditemukan.');
-            return redirect()->back()->withInput()->with('errors', ['id_mapel' => 'Mapel tidak ditemukan.']);
-        }
-        if (!$taModel->where('id_tahun_ajaran', $idTA)->first()) {
-            session()->setFlashdata('sweet_error', 'Tahun ajaran tidak ditemukan.');
-            return redirect()->back()->withInput()->with('errors', ['id_tahun_ajaran' => 'Tahun ajaran tidak ditemukan.']);
-        }
-        if (!$kelasModel->find($idKelas)) {
-            session()->setFlashdata('sweet_error', 'Kelas tidak ditemukan.');
-            return redirect()->back()->withInput()->with('errors', ['id_kelas' => 'Kelas tidak ditemukan.']);
+        if (!is_array($kelasArr)) {
+            // jika user hanya memilih satu kelas, beberapa browser bisa kirim string → ubah ke array
+            $kelasArr = [$kelasArr];
         }
 
-        // ---------- CEK KONFLIK mapel+kelas+TA (harus unik, hanya 1 guru) ----------
-        $gmModel = new \App\Models\GuruMatpel(); // table: tb_guru_mapel
-        $konflik = $gmModel->where([
-            'id_mapel'        => $idMapel,
-            'id_kelas'        => $idKelas,
-            'id_tahun_ajaran' => $idTA,
-        ])->first();
+        // --- Normalisasi: integer valid & dedup
+        $kelasIds = array_values(array_unique(array_filter(array_map(function ($v) {
+            $n = (int)$v;
+            return $n > 0 ? $n : null;
+        }, $kelasArr))));
 
-        if ($konflik) {
-            // (opsional) detailkan pesan
-            $m  = $mapelModel->find($idMapel);
-            $k  = $kelasModel->find($idKelas);
-            $nm = $m['nama']        ?? 'Mapel';
-            $kl = $k['nama_kelas']  ?? 'Kelas';
-            session()->setFlashdata('sweet_error', "{$nm} pada {$kl} untuk Tahun Ajaran ini sudah diajar oleh guru lain.");
-            return redirect()->back()->withInput()->with('errors', [
-                'id_mapel'        => 'Sudah diampu guru lain.',
-                'id_kelas'        => 'Sudah diampu guru lain.',
-                'id_tahun_ajaran' => 'Sudah diampu guru lain.',
-            ]);
+        if (empty($kelasIds)) {
+            return redirect()->back()->withInput()->with('errors', ['id_kelas' => 'Minimal pilih satu kelas.']);
         }
 
-        // ---------- CEK DUPLIKASI baris identik (guru yang sama) ----------
-        $dup = $gmModel->where([
-            'id_guru'         => $idGuru,
-            'id_mapel'        => $idMapel,
-            'id_tahun_ajaran' => $idTA,
-            'id_kelas'        => $idKelas,
-        ])->first();
+        // --- Optional: guard berdasarkan jabatan guru (ambil dari tb_guru)
+        $guruModel = new \App\Models\ModelGuru();
+        $guru      = $guruModel->select('id_guru, jabatan')->where('id_guru', $idGuru)->first();
 
-        if ($dup) {
-            session()->setFlashdata('sweet_error', 'Penugasan sudah ada untuk guru & kelas tersebut.');
-            return redirect()->back()->withInput()->with('errors', [
-                'id_guru'         => 'Duplikat penugasan.',
-                'id_mapel'        => 'Duplikat penugasan.',
-                'id_tahun_ajaran' => 'Duplikat penugasan.',
-                'id_kelas'        => 'Duplikat penugasan.',
-            ]);
+        if (!$guru) {
+            session()->setFlashdata('sweet_error', 'Guru tidak ditemukan.');
+            return redirect()->to(base_url('operator/data-guru'));
         }
 
-        // ---------- INSERT ----------
-        try {
+        $jabatan = mb_strtolower(trim((string)($guru['jabatan'] ?? '')), 'UTF-8');
+        $blokir  = ['kepala sekolah', 'wakil kepala', 'operator', 'staff', 'staf'];
+        if (in_array($jabatan, $blokir, true)) {
+            session()->setFlashdata('sweet_error', 'Jabatan ini tidak diperbolehkan memiliki penugasan mapel.');
+            return redirect()->to(base_url('operator/data-guru'));
+        }
+
+        // --- Model gm
+        $gmModel = new \App\Models\GuruMatpel();
+
+        // --- Transaksi
+        $db = \Config\Database::connect();
+        $db->transException(true)->transStart();
+
+        $inserted = 0;
+        $skipped  = 0;
+
+        foreach ($kelasIds as $idKelas) {
+            // Cek apakah kombinasi sudah ada
+            $exists = $gmModel->where([
+                'id_guru'         => $idGuru,
+                'id_mapel'        => $idMapel,
+                'id_tahun_ajaran' => $idTa,
+                'id_kelas'        => $idKelas,
+            ])->countAllResults(true) > 0;
+
+            if ($exists) {
+                $skipped++;
+                continue;
+            }
+
             $gmModel->insert([
                 'id_guru'         => $idGuru,
                 'id_mapel'        => $idMapel,
-                'id_tahun_ajaran' => $idTA,
+                'id_tahun_ajaran' => $idTa,
                 'id_kelas'        => $idKelas,
                 'jam_per_minggu'  => $jam,
-                'keterangan'      => $ket ?: null,
+                'keterangan'      => $ket,
             ]);
-        } catch (\Throwable $e) {
-            // Jika sudah pasang UNIQUE INDEX (lihat catatan di bawah), bisa kena error 1062 di sini
-            session()->setFlashdata('sweet_error', 'Gagal menyimpan data (mungkin duplikat atau kendala server).');
-            return redirect()->back()->withInput();
+            $inserted++;
         }
 
-        session()->setFlashdata('sweet_success', 'Data penugasan guru–mapel berhasil ditambahkan.');
+        $db->transComplete();
+
+        // --- Feedback
+        if ($inserted > 0) {
+            $msg = "Berhasil menambahkan {$inserted} penugasan.";
+            if ($skipped > 0) $msg .= " ({$skipped} duplikat dilewati)";
+            session()->setFlashdata('sweet_success', $msg);
+        } else {
+            session()->setFlashdata('sweet_warning', "Tidak ada penugasan baru. {$skipped} data duplikat dilewati.");
+        }
+
+        // Arahkan balik ke detail guru (atau halaman lain yang kamu mau)
         return redirect()->to(base_url('operator/data-guru'));
-    }
-
-    public function page_edit_guru_mapel($idGuruMapel = null)
-    {
-        $idGuruMapel = (int) ($idGuruMapel ?? 0);
-        if ($idGuruMapel <= 0) {
-            session()->setFlashdata('sweet_error', 'ID penugasan tidak valid.');
-            return redirect()->to(base_url('operator/guru-mapel'));
-        }
-
-        $row = $this->ModelGuruMatpel->find($idGuruMapel);
-        if (! $row) {
-            session()->setFlashdata('sweet_error', 'Data penugasan tidak ditemukan.');
-            return redirect()->to(base_url('operator/guru-mapel'));
-        }
-
-        $idGuru = (int)($row['id_guru'] ?? 0);
-        if ($idGuru <= 0) {
-            session()->setFlashdata('sweet_error', 'ID Guru pada penugasan tidak valid.');
-            return redirect()->to(base_url('operator/guru-mapel'));
-        }
-
-        $guru = $this->ModelGuru->select('id_guru, nama_lengkap, nip')->find($idGuru);
-        if (! $guru) {
-            session()->setFlashdata('sweet_error', 'Guru dengan ID ' . $idGuru . ' tidak ditemukan.');
-            return redirect()->to(base_url('operator/guru-mapel'));
-        }
-
-        $mapelList = $this->ModelMatpel
-            ->select('id_mapel, nama, kode')->orderBy('nama', 'ASC')->findAll();
-        $tahunList = $this->TahunAjaran
-            ->select('id_tahun_ajaran, tahun, semester, is_active')
-            ->orderBy('is_active', 'DESC')->orderBy('tahun', 'DESC')->findAll();
-        $kelasList = $this->ModelKelas
-            ->select('id_kelas, nama_kelas, tingkat, jurusan')
-            ->orderBy('tingkat', 'ASC')->orderBy('nama_kelas', 'ASC')->findAll();
-
-        $d_row = [
-            // === PK wajib ikut dikirim ke view ===
-            'id_guru_mapel'   => old('id_guru_mapel', (string)$idGuruMapel),
-
-            'id_guru'         => old('id_guru',         (string)$idGuru),
-            'id_mapel'        => old('id_mapel',        (string)$row['id_mapel']),
-            'id_tahun_ajaran' => old('id_tahun_ajaran', (string)$row['id_tahun_ajaran']),
-            'id_kelas'        => old('id_kelas',        (string)$row['id_kelas']),
-            'jam_per_minggu'  => old('jam_per_minggu',  (string)($row['jam_per_minggu'] ?? '0')),
-            'keterangan'      => old('keterangan',      (string)($row['keterangan'] ?? '')),
-
-            'nama_lengkap'    => (string)$guru['nama_lengkap'],
-            'nip'             => (string)$guru['nip'],
-        ];
-
-        return view('pages/operator/edit_guru_mapel', [
-            'title'        => 'Edit Guru Mapel | SDN Talun 2 Kota Serang',
-            'sub_judul'    => 'Edit Guru Mapel',
-            'nav_link'     => 'Edit Guru Mapel',
-            'mapelList'    => $mapelList,
-            'tahunList'    => $tahunList,
-            'kelasList'    => $kelasList,
-            'd_row'        => $d_row,
-            'idGuru'       => $idGuru,
-            'idGuruMapel'  => $idGuruMapel, // tetap dikirim untuk action URL
-        ]);
     }
     public function aksi_update_guru_mapel($idGuruMapel = null)
     {
@@ -2969,62 +3496,1676 @@ class OperatorController extends BaseController
         ];
         return view('pages/operator/detail_kelas', $data);
     }
+    public function aksi_delete_kelas($id = null)
+    {
+        // Cek data kelas berdasarkan ID
+        $row = $this->ModelKelas->find($id);
+        if (!$row) {
+            return redirect()->to(site_url('operator/kelas'))->with('sweet_error', 'Data kelas tidak ditemukan.');
+        }
+
+        try {
+            // Hapus data
+            $this->ModelKelas->delete($id);
+        } catch (\Throwable $e) {
+            return redirect()->to(site_url('operator/kelas'))
+                ->with('sweet_error', 'Gagal menghapus data kelas: ' . $e->getMessage());
+        }
+
+        return redirect()->to(site_url('operator/kelas'))
+            ->with('sweet_success', 'Kelas berhasil dihapus.');
+    }
+
 
     // Lapiran Data Siswa
     public function page_laporan_d_siswa()
     {
-        // --- Ambil query string untuk filter UI ---
-        $q      = trim((string) $this->request->getGet('q'));
-        $gender = trim((string) $this->request->getGet('gender'));
+        $req  = $this->request;
+        $q    = trim((string)($req->getGet('q') ?? ''));              // cari nama/NISN
+        $idTA = trim((string)($req->getGet('tahunajaran') ?? ''));    // id_tahun_ajaran (optional)
 
-        // --- Ambil data siswa + status aktif user lewat JOIN ---
-        // Catatan: sesuaikan nama tabel user: 'tb_user' vs 'tb_users' sesuai skema kamu
-        $rows = $this->SiswaModel
-            ->select('tb_siswa.*, u.username AS user_name, u.is_active AS user_active')
-            ->join('tb_users AS u', 'u.id_user = tb_siswa.user_id', 'left') // ganti ke tb_users jika memang pakai 's'
-            ->findAll();
+        // Builder dari model "tahunan" (kolom: siswa_id, tahun_ajaran_id, status, tanggal_masuk, tanggal_keluar)
+        $builder = $this->SiswaTahunanModel
+            ->select("
+            id_siswa_tahun, siswa_id, tahun_ajaran_id, status, tanggal_masuk, tanggal_keluar,
 
-        // --- Filter manual sesuai input pencarian ---
-        $filtered = array_values(array_filter($rows, function (array $row) use ($q, $gender) {
-            $match = true;
+            s.id_siswa, s.nisn, s.full_name, s.gender,
 
-            if ($q !== '') {
-                $nama    = mb_strtolower((string)($row['full_name'] ?? ''), 'UTF-8');
-                $nisn    = mb_strtolower((string)($row['nisn'] ?? ''), 'UTF-8');
-                $keyword = mb_strtolower($q, 'UTF-8');
-                $match   = (strpos($nama, $keyword) !== false) || (strpos($nisn, $keyword) !== false);
-            }
+            u.username AS user_name, u.is_active AS user_active,
 
-            if ($match && $gender !== '') {
-                $g = mb_strtolower((string)($row['gender'] ?? ''), 'UTF-8');
-                $match = ($g === mb_strtolower($gender, 'UTF-8'));
-            }
+            ta.tahun AS tahun_ajaran, ta.semester AS semester, ta.is_active AS ta_active
+        ", false)
+            // JOIN: gunakan nama kolom base table tanpa prefix agar tidak tergantung nama tabel dasar
+            ->join('tb_siswa s', 's.id_siswa = siswa_id', 'left')
+            ->join('tb_users u', 'u.id_user = s.user_id', 'left')
+            ->join('tb_tahun_ajaran ta', 'ta.id_tahun_ajaran = tahun_ajaran_id', 'left');
 
-            return $match;
-        }));
-
-        // --- Hitung aktif/nonaktif dari hasil filter (bisa ganti ke $rows jika mau total keseluruhan) ---
-        $SiswaAktif = 0;
-        $SiswaNonAktif = 0;
-        foreach ($filtered as $r) {
-            $flag = (int)($r['user_active'] ?? 0);
-            if ($flag === 1) $SiswaAktif++;
-            else $SiswaNonAktif++;
+        // Filter q (nama / NISN)
+        if ($q !== '') {
+            $builder->groupStart()
+                ->like('s.full_name', $q)
+                ->orLike('s.nisn', $q)
+                ->groupEnd();
         }
 
-        // --- Kirim ke view ---
-        $data = [
+        // Filter Tahun Ajaran (id)
+        if ($idTA !== '' && ctype_digit($idTA)) {
+            $builder->where('tahun_ajaran_id', (int)$idTA);
+        }
+
+        $rows = $builder
+            ->orderBy('s.full_name', 'ASC')
+            ->findAll();
+
+        // Ringkasan: berdasarkan user.is_active (1 / 0)
+        $SiswaAktif = 0;
+        $SiswaNonAktif = 0;
+
+        // (Opsional) ringkasan berdasarkan status di tabel tahunan
+        $EnrolAktif = 0;
+        $EnrolNonAktif = 0;
+
+        foreach ($rows as $r) {
+            $ua = (int)($r['user_active'] ?? 0);
+            if ($ua === 1) $SiswaAktif++;
+            else $SiswaNonAktif++;
+
+            $st = strtolower((string)($r['status'] ?? ''));
+            $isEnrolActive = ($st === '1' || $st === 'aktif' || $st === 'active' || $st === 'ya' || $st === 'true');
+            if ($isEnrolActive) $EnrolAktif++;
+            else $EnrolNonAktif++;
+        }
+
+        return view('pages/operator/laporan_data_siswa', [
             'title'         => 'Laporan Data siswa | SDN Talun 2 Kota Serang',
             'sub_judul'     => 'Laporan Data Siswa/i',
             'nav_link'      => 'Laporan Data Siswa',
-            'd_siswa'       => $filtered,          // berisi tb_siswa.* + user_name + user_active
+            'd_siswa'       => $rows,          // berisi data tahunan + siswa + user + tahun ajaran
             'q'             => $q,
-            'gender'        => $gender,
-            'SiswaAktif'    => $SiswaAktif,        // jumlah siswa aktif (berdasarkan user.is_active)
-            'SiswaNonAktif' => $SiswaNonAktif,     // jumlah siswa nonaktif
-            'totalSiswa'    => count($filtered),   // total (setelah filter)
+            'tahunajaran'   => $idTA,
+            'SiswaAktif'    => $SiswaAktif,        // ringkasan berdasarkan user.is_active
+            'SiswaNonAktif' => $SiswaNonAktif,
+            'EnrolAktif'    => $EnrolAktif,        // ringkasan berdasarkan status (opsional digunakan di UI)
+            'EnrolNonAktif' => $EnrolNonAktif,
+            'totalSiswa'    => count($rows),
+        ]);
+    }
+    public function page_tambah_laporan_siswa(?string $param = null)
+    {
+        $siswaModel = new \App\Models\SiswaModel();        // kolom: id_siswa (PK), nisn, nama_lengkap
+        $taModel    = new \App\Models\TahunAjaranModel();  // kolom: id_tahun_ajaran, tahun, semester, is_active
+
+        $siswaTerpilih = null;
+        $isParamNisn   = false;
+
+        $param = isset($param) ? trim($param) : null;
+
+        if (!empty($param)) {
+            // 1) Coba sebagai id_siswa (param numerik, termasuk "00123" tetap dianggap numerik oleh ctype_digit)
+            if (ctype_digit($param)) {
+                $siswaTerpilih = $siswaModel
+                    ->select('id_siswa, nisn, full_name')
+                    ->where('id_siswa', (int) $param)
+                    ->limit(1)
+                    ->first();
+            }
+
+            // 2) Jika belum ketemu, coba sebagai NISN
+            if (!$siswaTerpilih) {
+                $siswaTerpilih = $siswaModel
+                    ->select('id_siswa, nisn, full_name')
+                    ->where('nisn', $param)
+                    ->limit(1)
+                    ->first();
+
+                if ($siswaTerpilih) {
+                    $isParamNisn = true; // tandai param memang NISN
+                }
+            }
+
+            // 3) Tetap tak ketemu → 404
+            if (!$siswaTerpilih) {
+                throw PageNotFoundException::forPageNotFound('Siswa tidak ditemukan.');
+            }
+        }
+
+        // Dropdown siswa:
+        // - Datang via NISN → kunci hanya 1 opsi (tidak bisa pilih siswa lain)
+        // - Selain itu → tampilkan semua siswa
+        if ($isParamNisn && $siswaTerpilih) {
+            $d_siswa = [$siswaTerpilih];
+        } else {
+            $d_siswa = $siswaModel
+                ->select('id_siswa, nisn, full_name')
+                ->orderBy('full_name', 'ASC')
+                ->findAll();
+        }
+
+        // Tahun ajaran (pilih salah satu):
+        // a) Semua tahun ajaran
+        $d_tahun = $taModel
+            ->select('id_tahun_ajaran, tahun, semester, is_active')
+            ->orderBy('tahun', 'DESC')
+            ->orderBy('semester', 'ASC')
+            ->findAll();
+
+        // b) (Opsional) Hanya yang aktif
+        // $d_tahun = $taModel
+        //     ->select('id_tahun_ajaran, tahun, semester, is_active')
+        //     ->where('is_active', 1)
+        //     ->orderBy('tahun', 'DESC')
+        //     ->orderBy('semester', 'ASC')
+        //     ->findAll();
+
+        $data = [
+            'title'         => 'Tambah Data Siswa | SDN Talun 2 Kota Serang',
+            'sub_judul'     => 'Tambah Data Siswa/i',
+            'nav_link'      => 'Tambah Data Siswa',
+            'd_siswa'       => $d_siswa,
+            'd_tahun'       => $d_tahun,
+            'siswaTerpilih' => $siswaTerpilih,
+            'preselectId'   => (int) ($siswaTerpilih['id_siswa'] ?? 0),
+            // guard NISN untuk POST (dipakai verifikasi pasangan siswa_id × nisn_lock)
+            'nisn_lock'     => $isParamNisn && $siswaTerpilih ? (string) $siswaTerpilih['nisn'] : null,
+            // opsional: memudahkan view mengunci dropdown
+            'lock_dropdown' => $isParamNisn && $siswaTerpilih,
         ];
 
-        return view('pages/operator/laporan_data_siswa', $data);
+        return view('pages/operator/tambah_siswa_laporan', $data);
+    }
+    public function aksi_laporan_data_siswa()
+    {
+
+        $req        = $this->request;
+        $siswaModel = new \App\Models\SiswaModel();          // id_siswa (PK), nisn, nama_lengkap
+        $taModel    = new \App\Models\TahunAjaranModel();     // id_tahun_ajaran, tahun, semester, is_active
+        $lapModel   = new \App\Models\SiswaTahunanModel();    // id_laporan, siswa_id, tahun_ajaran_id, status, tanggal_masuk, tanggal_keluar, created_at
+
+        // ========= 1) RULES & MESSAGES =========
+        $rules = [
+            'siswa_id'         => 'required|is_natural_no_zero',
+            'tahun_ajaran_id'  => 'required|is_natural_no_zero',
+            'status'           => 'required|in_list[aktif,keluar,lulus]',
+            'tanggal_masuk'    => 'required|valid_date[Y-m-d]',
+            'tanggal_keluar'   => 'permit_empty|valid_date[Y-m-d]',
+            // nisn_lock opsional (ada jika form dibuka via NISN)
+        ];
+
+        $messages = [
+            'siswa_id' => [
+                'required'           => 'Siswa wajib dipilih.',
+                'is_natural_no_zero' => 'Siswa tidak valid.',
+            ],
+            'tahun_ajaran_id' => [
+                'required'           => 'Tahun ajaran wajib dipilih.',
+                'is_natural_no_zero' => 'Tahun ajaran tidak valid.',
+            ],
+            'status' => [
+                'required' => 'Status wajib dipilih.',
+                'in_list'  => 'Status harus salah satu dari: aktif, keluar, atau lulus.',
+            ],
+            'tanggal_masuk' => [
+                'required'   => 'Tanggal masuk wajib diisi.',
+                'valid_date' => 'Tanggal masuk harus berformat YYYY-MM-DD.',
+            ],
+            'tanggal_keluar' => [
+                'valid_date' => 'Tanggal keluar harus berformat YYYY-MM-DD.',
+            ],
+        ];
+
+        if (! $this->validate($rules, $messages)) {
+            return redirect()->back()->withInput()
+                ->with('errors', $this->validator->getErrors());
+        }
+
+        // ========= 2) AMBIL INPUT =========
+        $siswaId    = (int) $req->getPost('siswa_id');
+        $taId       = (int) $req->getPost('tahun_ajaran_id');
+        $status     = (string) $req->getPost('status');
+        $tglMasuk   = (string) $req->getPost('tanggal_masuk');
+        $tglKeluar  = trim((string) $req->getPost('tanggal_keluar'));
+        $nisnLock   = trim((string) $req->getPost('nisn_lock')); // opsional
+
+        // ========= 3) GUARD nisn_lock (jika ada) =========
+        if ($nisnLock !== '') {
+            $pairOk = $siswaModel->select('id_siswa')
+                ->where('id_siswa', $siswaId)
+                ->where('nisn', $nisnLock)
+                ->limit(1)
+                ->first();
+
+            if (! $pairOk) {
+                return redirect()->back()->withInput()->with('errors', [
+                    'siswa_id' => 'Tidak diizinkan: siswa tidak sesuai dengan NISN di URL.',
+                ]);
+            }
+        }
+
+        // ========= 4) CEK ENTITAS ADA =========
+        $siswaRow = $siswaModel->select('id_siswa')->where('id_siswa', $siswaId)->first();
+        if (! $siswaRow) {
+            return redirect()->back()->withInput()->with('errors', [
+                'siswa_id' => 'Siswa tidak ditemukan.',
+            ]);
+        }
+
+        $taRow = $taModel->select('id_tahun_ajaran, is_active')->where('id_tahun_ajaran', $taId)->first();
+        if (! $taRow) {
+            return redirect()->back()->withInput()->with('errors', [
+                'tahun_ajaran_id' => 'Tahun ajaran tidak ditemukan.',
+            ]);
+        }
+
+        // ========= 5) LOGIKA STATUS & TANGGAL =========
+        $logicErrors = [];
+
+        // a) Status AKTIF → tanggal_keluar harus kosong
+        if ($status === 'aktif' && $tglKeluar !== '') {
+            $logicErrors['tanggal_keluar'] = 'Untuk status AKTIF, tanggal keluar harus dikosongkan.';
+        }
+
+        // b) Status KELUAR/LULUS → tanggal_keluar wajib
+        if (in_array($status, ['keluar', 'lulus'], true) && $tglKeluar === '') {
+            $logicErrors['tanggal_keluar'] = 'Untuk status KELUAR/LULUS, tanggal keluar wajib diisi.';
+        }
+
+        // c) Urutan tanggal: keluar ≥ masuk
+        if ($tglKeluar !== '' && $tglMasuk !== '' && $tglKeluar < $tglMasuk) {
+            $logicErrors['tanggal_keluar'] = 'Tanggal keluar tidak boleh lebih awal dari tanggal masuk.';
+        }
+
+        if (! empty($logicErrors)) {
+            return redirect()->back()->withInput()->with('errors', $logicErrors);
+        }
+
+        // ========= 6) ANTI-DUPLIKASI (siswa_id × tahun_ajaran_id) =========
+        $dupe = $lapModel->select('id_siswa_tahun')
+            ->where('siswa_id', $siswaId)
+            ->where('tahun_ajaran_id', $taId)
+            ->limit(1)
+            ->first();
+
+        if ($dupe) {
+            return redirect()->back()->withInput()->with('errors', [
+                'tahun_ajaran_id' => 'Laporan untuk siswa & tahun ajaran tersebut sudah ada.',
+            ]);
+        }
+
+        // ========= 7) SIMPAN =========
+        try {
+            $lapModel->insert([
+                'siswa_id'        => $siswaId,
+                'tahun_ajaran_id' => $taId,
+                'status'          => $status,
+                'tanggal_masuk'   => $tglMasuk,
+                'tanggal_keluar'  => ($tglKeluar !== '' ? $tglKeluar : null),
+                'created_at'      => date('Y-m-d H:i:s'),
+            ]);
+        } catch (\Throwable $e) {
+            return redirect()->back()->withInput()->with('errors', [
+                'general' => 'Gagal menyimpan data. Silakan coba lagi. ' . ($e->getCode() ? '(Kode: ' . $e->getCode() . ')' : ''),
+            ]);
+        }
+
+        // ========= 8) SUKSES =========
+        return redirect()->to(site_url('operator/data-siswa'))
+            ->with('sweet_success', 'Laporan siswa berhasil ditambahkan.');
+    }
+    public function aksi_delete_laporan_siswa($param = null)
+    {
+        $req        = $this->request;
+        $siswaModel = new \App\Models\SiswaModel();         // tb_siswa
+        $lapModel   = new \App\Models\SiswaTahunanModel();  // tb_siswa_tahun (PK: id_siswa_tahun)
+
+        if ($param === null || $param === '') {
+            return redirect()->back()->with('sweet_error', 'Parameter tidak valid.');
+        }
+
+        // ========== CASE 1: PARAM NUMERIC → anggap ID laporan (id_siswa_tahun) ==========
+        if (ctype_digit((string)$param)) {
+            $lap = $lapModel->select('id_siswa_tahun, siswa_id, tahun_ajaran_id')
+                ->where('id_siswa_tahun', (int)$param)
+                ->first();
+            if (!$lap) {
+                return redirect()->back()->with('sweet_error', 'Data laporan tidak ditemukan.');
+            }
+
+            try {
+                $lapModel->delete((int)$lap['id_siswa_tahun']);
+            } catch (\Throwable $e) {
+                return redirect()->back()->with('sweet_error', 'Gagal menghapus laporan. ' . $e->getMessage());
+            }
+
+            return redirect()->back()->with('sweet_success', 'Laporan siswa berhasil dihapus.');
+        }
+
+        // ========== CASE 2: PARAM NON-NUMERIC → anggap NISN ==========
+        $nisn  = (string) $param;
+        $siswa = $siswaModel->select('id_siswa, nisn, nama_lengkap')
+            ->where('nisn', $nisn)
+            ->first();
+        if (!$siswa) {
+            return redirect()->back()->with('sweet_error', 'Siswa berdasarkan NISN tidak ditemukan.');
+        }
+
+        // Jika ada parameter tahun ajaran (?ta=ID), hapus laporan spesifik tsb
+        $taId = (int) $req->getGet('ta');
+        if ($taId > 0) {
+            $row = $lapModel->select('id_siswa_tahun')
+                ->where('siswa_id', (int)$siswa['id_siswa'])
+                ->where('tahun_ajaran_id', $taId)
+                ->first();
+            if (!$row) {
+                return redirect()->back()->with('sweet_error', 'Laporan untuk tahun ajaran tersebut tidak ditemukan.');
+            }
+
+            try {
+                $lapModel->delete((int)$row['id_siswa_tahun']);
+            } catch (\Throwable $e) {
+                return redirect()->back()->with('sweet_error', 'Gagal menghapus laporan. ' . $e->getMessage());
+            }
+
+            return redirect()->back()->with('sweet_success', 'Laporan siswa berhasil dihapus.');
+        }
+
+        // Tanpa ?ta → cek jumlah laporan siswa ini
+        $rows = $lapModel->select('id_siswa_tahun')
+            ->where('siswa_id', (int)$siswa['id_siswa'])
+            ->findAll();
+
+        if (count($rows) === 0) {
+            return redirect()->back()->with('sweet_warning', 'Tidak ada laporan untuk siswa ini.');
+        }
+        if (count($rows) > 1) {
+            // Hindari mass-delete tidak sengaja
+            return redirect()->back()->with(
+                'sweet_error',
+                'Terdapat lebih dari satu laporan untuk siswa ini. Sertakan parameter ?ta={tahun_ajaran_id} atau gunakan ID laporan numerik.'
+            );
+        }
+
+        // Tepat satu laporan → hapus
+        try {
+            $lapModel->delete((int)$rows[0]['id_siswa_tahun']);
+        } catch (\Throwable $e) {
+            return redirect()->back()->with('sweet_error', 'Gagal menghapus laporan. ' . $e->getMessage());
+        }
+
+        return redirect()->back()->with('sweet_success', 'Laporan siswa berhasil dihapus.');
+    }
+
+    public function page_laporan_guru()
+    {
+        $req  = $this->request;
+        $q    = trim((string)($req->getGet('q') ?? ''));              // pencarian nama/NIP
+        $idTA = trim((string)($req->getGet('tahunajaran') ?? ''));    // id_tahun_ajaran
+        $gender = trim((string)($req->getGet('gender') ?? ''));       // gender L/P
+
+        // Ambil daftar tahun ajaran untuk filter dropdown
+        $listTA = $this->TahunAjaran
+            ->orderBy('tahun', 'DESC')
+            ->orderBy('semester', 'DESC')
+            ->findAll();
+
+        // Base query
+        $builder = $this->GuruTahunanModel
+            ->select("
+            id_guru_tahun, guru_id, tahun_ajaran_id, status, tanggal_masuk, tanggal_keluar,
+            g.id_guru, g.nip, g.nama_lengkap, g.jenis_kelamin, g.status_active AS guru_active,
+            u.username AS user_name, u.is_active AS user_active,
+            ta.tahun AS tahun_ajaran, ta.semester AS semester, ta.is_active AS ta_active
+        ", false)
+            ->join('tb_guru g', 'g.id_guru = guru_id', 'left')
+            ->join('tb_users u', 'u.id_user = g.user_id', 'left')
+            ->join('tb_tahun_ajaran ta', 'ta.id_tahun_ajaran = tahun_ajaran_id', 'left');
+
+        // Filter pencarian
+        if ($q !== '') {
+            $builder->groupStart()
+                ->like('g.nama_lengkap', $q)
+                ->orLike('g.nip', $q)
+                ->groupEnd();
+        }
+
+        // Filter tahun ajaran
+        if ($idTA !== '' && ctype_digit($idTA)) {
+            $builder->where('tahun_ajaran_id', (int) $idTA);
+        }
+
+        // Filter gender
+        if (in_array($gender, ['L', 'P'])) {
+            $builder->where('g.jenis_kelamin', $gender);
+        }
+
+        // Ambil data guru
+        $rows = $builder
+            ->orderBy('g.nama_lengkap', 'ASC')
+            ->findAll();
+
+        // Ringkasan
+        $GuruAktif = $GuruNonAktif = $EnrolAktif = $EnrolNonAktif = 0;
+
+        foreach ($rows as $r) {
+            // Status guru aktif (master guru)
+            if ((int)($r['guru_active'] ?? 0) === 1) $GuruAktif++;
+            else $GuruNonAktif++;
+
+            // Status enrol (tahunan)
+            $st = strtolower((string)($r['status'] ?? ''));
+            if (in_array($st, ['1', 'aktif', 'active', 'ya', 'true'], true)) $EnrolAktif++;
+            else $EnrolNonAktif++;
+        }
+
+        return view('pages/operator/laporan_data_guru', [
+            'title'          => 'Laporan Data Guru | SDN Talun 2 Kota Serang',
+            'sub_judul'      => 'Laporan Data Guru',
+            'nav_link'       => 'Laporan Data Guru',
+            'd_guru'         => $rows,
+            'q'              => $q,
+            'tahunajaran'    => $idTA,
+            'gender'         => $gender,
+            'listTA'         => $listTA,
+            'GuruAktif'      => $GuruAktif,
+            'GuruNonAktif'   => $GuruNonAktif,
+            'EnrolAktif'     => $EnrolAktif,
+            'EnrolNonAktif'  => $EnrolNonAktif,
+            'totalGuru'      => count($rows),
+        ]);
+    }
+
+    public function page_tambah_laporan_guru(?string $param = null)
+    {
+        $guruModel = new \App\Models\ModelGuru();          // kolom: id_guru (PK), nip, nama_lengkap, jenis_kelamin, status_active, ...
+        $taModel   = new \App\Models\TahunAjaranModel();   // kolom: id_tahun_ajaran, tahun, semester, is_active
+
+        $guruTerpilih = null;
+        $isParamNip   = false;
+
+        $param = isset($param) ? trim($param) : null;
+
+        if (!empty($param)) {
+            // 1) Coba sebagai id_guru (param numerik, "00123" tetap true di ctype_digit)
+            if (ctype_digit($param)) {
+                $guruTerpilih = $guruModel
+                    ->select('id_guru, nip, nama_lengkap')
+                    ->where('id_guru', (int) $param)
+                    ->limit(1)
+                    ->first();
+            }
+
+            // 2) Jika belum ketemu, coba sebagai NIP
+            if (!$guruTerpilih) {
+                $guruTerpilih = $guruModel
+                    ->select('id_guru, nip, nama_lengkap')
+                    ->where('nip', $param)
+                    ->limit(1)
+                    ->first();
+
+                if ($guruTerpilih) {
+                    $isParamNip = true; // tandai param memang NIP
+                }
+            }
+
+            // 3) Tetap tak ketemu → 404
+            if (!$guruTerpilih) {
+                throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound('Guru tidak ditemukan.');
+            }
+        }
+
+        // Dropdown guru:
+        // - Datang via NIP → kunci hanya 1 opsi (tidak bisa pilih guru lain)
+        // - Selain itu → tampilkan semua guru
+        if ($isParamNip && $guruTerpilih) {
+            $d_guru = [$guruTerpilih];
+        } else {
+            $d_guru = $guruModel
+                ->select('id_guru, nip, nama_lengkap')
+                ->orderBy('nama_lengkap', 'ASC')
+                ->findAll();
+        }
+
+        // Tahun ajaran (semua; sesuaikan jika ingin hanya yang aktif)
+        $d_tahun = $taModel
+            ->select('id_tahun_ajaran, tahun, semester, is_active')
+            ->orderBy('tahun', 'DESC')
+            ->orderBy('semester', 'ASC')
+            ->findAll();
+
+        $data = [
+            'title'         => 'Tambah Data Guru | SDN Talun 2 Kota Serang',
+            'sub_judul'     => 'Laporan Data Guru',
+            'nav_link'      => 'Laporan Data Guru',
+            'd_guru'        => $d_guru,
+            'd_tahun'       => $d_tahun,
+            'guruTerpilih'  => $guruTerpilih,
+            'preselectId'   => (int)($guruTerpilih['id_guru'] ?? 0),
+
+            // guard NIP untuk POST (verifikasi pasangan guru_id × nip_lock di aksi simpan)
+            'nip_lock'      => $isParamNip && $guruTerpilih ? (string)$guruTerpilih['nip'] : null,
+
+            // opsional: bantu view mengunci dropdown
+            'lock_dropdown' => $isParamNip && $guruTerpilih,
+        ];
+
+        // Sesuaikan dengan file view form GURU yang sudah kamu buat
+        return view('pages/operator/tambah-guru-laporan', $data);
+    }
+    public function aksi_laporan_data_guru()
+    {
+        $req       = $this->request;
+        $guruModel = new \App\Models\ModelGuru();          // id_guru (PK), nip, nama_lengkap, ...
+        $taModel   = new \App\Models\TahunAjaranModel();   // id_tahun_ajaran, tahun, semester, is_active
+        $gtModel   = new \App\Models\GuruTahunanModel();   // id_guru_tahun, guru_id, tahun_ajaran_id, status, tanggal_masuk, tanggal_keluar
+
+        // ========= 1) RULES & MESSAGES =========
+        $rules = [
+            'guru_id'         => 'required|is_natural_no_zero',
+            'tahun_ajaran_id' => 'required|is_natural_no_zero',
+            'status'          => 'required|in_list[aktif,nonaktif]',
+            'tanggal_masuk'   => 'required|valid_date[Y-m-d]',
+            'tanggal_keluar'  => 'permit_empty|valid_date[Y-m-d]',
+            // nip_lock optional (sent when page opened via NIP)
+        ];
+        $messages = [
+            'guru_id' => [
+                'required'           => 'Guru wajib dipilih.',
+                'is_natural_no_zero' => 'Guru tidak valid.',
+            ],
+            'tahun_ajaran_id' => [
+                'required'           => 'Tahun ajaran wajib dipilih.',
+                'is_natural_no_zero' => 'Tahun ajaran tidak valid.',
+            ],
+            'status' => [
+                'required' => 'Status wajib dipilih.',
+                'in_list'  => 'Status harus salah satu dari: aktif atau nonaktif.',
+            ],
+            'tanggal_masuk' => [
+                'required'   => 'Tanggal masuk wajib diisi.',
+                'valid_date' => 'Tanggal masuk harus berformat YYYY-MM-DD.',
+            ],
+            'tanggal_keluar' => [
+                'valid_date' => 'Tanggal keluar harus berformat YYYY-MM-DD.',
+            ],
+        ];
+
+        if (! $this->validate($rules, $messages)) {
+            return redirect()->back()->withInput()
+                ->with('errors', $this->validator->getErrors());
+        }
+
+        // ========= 2) INPUT =========
+        $guruId    = (int) $req->getPost('guru_id');
+        $taId      = (int) $req->getPost('tahun_ajaran_id');
+        $status    = (string) $req->getPost('status');            // aktif | nonaktif
+        $tglMasuk  = (string) $req->getPost('tanggal_masuk');     // YYYY-MM-DD
+        $tglKeluar = trim((string) $req->getPost('tanggal_keluar'));
+        $nipLock   = trim((string) $req->getPost('nip_lock'));    // optional
+
+        // ========= 3) GUARD nip_lock (jika ada) =========
+        if ($nipLock !== '') {
+            $pairOk = $guruModel->select('id_guru')
+                ->where('id_guru', $guruId)
+                ->where('nip', $nipLock)
+                ->limit(1)
+                ->first();
+
+            if (! $pairOk) {
+                return redirect()->back()->withInput()->with('sweet_errors', [
+                    'guru_id' => 'Tidak diizinkan: guru tidak sesuai dengan NIP di URL.',
+                ]);
+            }
+        }
+
+        // ========= 4) CEK ENTITAS ADA =========
+        $guruRow = $guruModel->select('id_guru')->where('id_guru', $guruId)->first();
+        if (! $guruRow) {
+            return redirect()->back()->withInput()->with('sweet_errors', [
+                'guru_id' => 'Guru tidak ditemukan.',
+            ]);
+        }
+        $taRow = $taModel->select('id_tahun_ajaran, is_active')->where('id_tahun_ajaran', $taId)->first();
+        if (! $taRow) {
+            return redirect()->back()->withInput()->with('sweet_errors', [
+                'tahun_ajaran_id' => 'Tahun ajaran tidak ditemukan.',
+            ]);
+        }
+
+        // ========= 5) LOGIKA STATUS & TANGGAL =========
+        $logicErrors = [];
+
+        // a) Status AKTIF → tanggal_keluar harus kosong
+        if ($status === 'aktif' && $tglKeluar !== '') {
+            $logicErrors['tanggal_keluar'] = 'Untuk status AKTIF, tanggal keluar harus dikosongkan.';
+        }
+        // b) Status NONAKTIF → tanggal_keluar wajib
+        if ($status === 'nonaktif' && $tglKeluar === '') {
+            $logicErrors['tanggal_keluar'] = 'Untuk status NONAKTIF, tanggal keluar wajib diisi.';
+        }
+        // c) Urutan tanggal: keluar ≥ masuk
+        if ($tglKeluar !== '' && $tglMasuk !== '' && $tglKeluar < $tglMasuk) {
+            $logicErrors['tanggal_keluar'] = 'Tanggal keluar tidak boleh lebih awal dari tanggal masuk.';
+        }
+
+        if (! empty($logicErrors)) {
+            return redirect()->back()->withInput()->with('errors', $logicErrors);
+        }
+
+        // ========= 6) ANTI-DUPLIKASI (guru_id × tahun_ajaran_id) =========
+        $dupe = $gtModel->select('id_guru_tahun')
+            ->where('guru_id', $guruId)
+            ->where('tahun_ajaran_id', $taId)
+            ->limit(1)
+            ->first();
+
+        if ($dupe) {
+            return redirect()->back()->withInput()->with('sweet_errors', [
+                'tahun_ajaran_id' => 'Laporan untuk guru & tahun ajaran tersebut sudah ada.',
+            ]);
+        }
+
+        // ========= 7) SIMPAN =========
+        try {
+            $gtModel->insert([
+                'guru_id'         => $guruId,
+                'tahun_ajaran_id' => $taId,
+                'status'          => $status,                               // aktif | nonaktif
+                'tanggal_masuk'   => $tglMasuk,
+                'tanggal_keluar'  => ($tglKeluar !== '' ? $tglKeluar : null),
+                'created_at'      => date('Y-m-d H:i:s'),
+            ]);
+        } catch (\Throwable $e) {
+            return redirect()->back()->withInput()->with('sweet_errors', [
+                'general' => 'Gagal menyimpan data. Silakan coba lagi. ' . ($e->getCode() ? '(Kode: ' . $e->getCode() . ')' : ''),
+            ]);
+        }
+
+        // ========= 8) SUKSES =========
+        return redirect()->to(site_url('operator/data-guru'))
+            ->with('sweet_success', 'Laporan guru berhasil ditambahkan.');
+    }
+    public function aksi_delete_laporan_guru($param = null)
+    {
+        $req       = $this->request;
+        $guruModel = new \App\Models\ModelGuru();        // tb_guru
+        $gtModel   = new \App\Models\GuruTahunanModel(); // tb_guru_tahun (PK: id_guru_tahun)
+
+        if ($param === null || $param === '') {
+            return redirect()->back()->with('sweet_error', 'Parameter tidak valid.');
+        }
+
+        // ========== CASE 1: PARAM NUMERIC → anggap ID laporan (id_guru_tahun) ==========
+        if (ctype_digit((string)$param)) {
+            $lap = $gtModel->select('id_guru_tahun, guru_id, tahun_ajaran_id')
+                ->where('id_guru_tahun', (int)$param)
+                ->first();
+
+            if (! $lap) {
+                return redirect()->back()->with('sweet_error', 'Data laporan tidak ditemukan.');
+            }
+
+            try {
+                $gtModel->delete((int)$lap['id_guru_tahun']);
+            } catch (\Throwable $e) {
+                return redirect()->back()->with('sweet_error', 'Gagal menghapus laporan. ' . $e->getMessage());
+            }
+
+            return redirect()->back()->with('sweet_success', 'Laporan guru berhasil dihapus.');
+        }
+
+        // ========== CASE 2: PARAM NON-NUMERIC → anggap NIP ==========
+        $nip  = (string) $param;
+        $guru = $guruModel->select('id_guru, nip, nama_lengkap')
+            ->where('nip', $nip)
+            ->first();
+
+        if (! $guru) {
+            return redirect()->back()->with('sweet_error', 'Guru berdasarkan NIP tidak ditemukan.');
+        }
+
+        // Jika ada parameter tahun ajaran (?ta=ID), hapus laporan spesifik tsb
+        $taId = (int) $req->getGet('ta');
+        if ($taId > 0) {
+            $row = $gtModel->select('id_guru_tahun')
+                ->where('guru_id', (int)$guru['id_guru'])
+                ->where('tahun_ajaran_id', $taId)
+                ->first();
+
+            if (! $row) {
+                return redirect()->back()->with('sweet_error', 'Laporan untuk tahun ajaran tersebut tidak ditemukan.');
+            }
+
+            try {
+                $gtModel->delete((int)$row['id_guru_tahun']);
+            } catch (\Throwable $e) {
+                return redirect()->back()->with('sweet_error', 'Gagal menghapus laporan. ' . $e->getMessage());
+            }
+
+            return redirect()->back()->with('sweet_success', 'Laporan guru berhasil dihapus.');
+        }
+
+        // Tanpa ?ta → cek jumlah laporan guru ini
+        $rows = $gtModel->select('id_guru_tahun')
+            ->where('guru_id', (int)$guru['id_guru'])
+            ->findAll();
+
+        if (count($rows) === 0) {
+            return redirect()->back()->with('sweet_warning', 'Tidak ada laporan untuk guru ini.');
+        }
+
+        if (count($rows) > 1) {
+            // Hindari mass-delete tidak sengaja
+            return redirect()->back()->with(
+                'sweet_error',
+                'Terdapat lebih dari satu laporan untuk guru ini. Sertakan parameter ?ta={tahun_ajaran_id} atau gunakan ID laporan numerik.'
+            );
+        }
+
+        // Tepat satu laporan → hapus
+        try {
+            $gtModel->delete((int)$rows[0]['id_guru_tahun']);
+        } catch (\Throwable $e) {
+            return redirect()->back()->with('sweet_error', 'Gagal menghapus laporan. ' . $e->getMessage());
+        }
+
+        return redirect()->back()->with('sweet_success', 'Laporan guru berhasil dihapus.');
+    }
+
+
+    // laporan nilai siswa
+    public function page_laporan_nilai_siswa()
+    {
+        $req  = $this->request;
+        $q    = trim((string)($req->getGet('q') ?? ''));            // cari nama/NISN
+        $idTA = trim((string)($req->getGet('tahunajaran') ?? ''));  // id_tahun_ajaran (opsional)
+        $kodeKat = trim((string)($req->getGet('kategori') ?? ''));  // opsional: UTS/UAS
+        $idMapel = trim((string)($req->getGet('mapel') ?? ''));     // opsional: id_mapel
+
+        $nilaiModel = new \App\Models\NilaiSiswaModel();  // tb_nilai_siswa
+
+        // Base builder: ambil nilai + identitas siswa + TA + mapel + kategori
+        $builder = $nilaiModel
+            ->select("
+            id_nilai, siswa_id, tahun_ajaran_id, mapel_id, kategori_id, skor, tanggal, keterangan,
+
+            s.id_siswa, s.nisn, s.full_name, s.gender,
+
+            ta.id_tahun_ajaran, ta.tahun AS tahun_ajaran, ta.semester,
+
+            m.id_mapel, m.nama,
+
+            k.id_kategori, k.kode AS kategori_kode, k.nama AS kategori_nama
+        ", false)
+            ->join('tb_siswa s', 's.id_siswa = siswa_id', 'left')
+            ->join('tb_tahun_ajaran ta', 'ta.id_tahun_ajaran = tahun_ajaran_id', 'left')
+            ->join('tb_mapel m', 'm.id_mapel = mapel_id', 'left')
+            ->join('tb_kategori_nilai k', 'k.id_kategori = kategori_id', 'left');
+
+        // Filter q (nama / NISN)
+        if ($q !== '') {
+            $builder->groupStart()
+                ->like('s.full_name', $q)
+                ->orLike('s.nisn', $q)
+                ->groupEnd();
+        }
+
+        // Filter Tahun Ajaran (id)
+        if ($idTA !== '' && ctype_digit($idTA)) {
+            $builder->where('tahun_ajaran_id', (int) $idTA);
+        }
+
+        // (Opsional) Filter Kategori: UTS/UAS via kode
+        if ($kodeKat !== '') {
+            $builder->where('k.kode', strtoupper($kodeKat)); // contoh: ?kategori=UTS
+        }
+
+        // (Opsional) Filter Mapel: id_mapel
+        if ($idMapel !== '' && ctype_digit($idMapel)) {
+            $builder->where('mapel_id', (int) $idMapel);
+        }
+
+        // Urutkan: Nama siswa → Mapel → Kategori (UTS/UAS) → tanggal
+        $rows = $builder
+            ->orderBy('s.full_name', 'ASC')
+            ->orderBy('m.nama', 'ASC')
+            ->orderBy('k.kode', 'ASC')
+            ->orderBy('tanggal', 'ASC')
+            ->findAll();
+
+        // Ringkasan sederhana
+        $totalNilai = count($rows);
+        $distinctSiswa = [];
+        foreach ($rows as $r) {
+            $distinctSiswa[(int)($r['siswa_id'] ?? 0)] = true;
+        }
+        $totalSiswa = count($distinctSiswa);
+
+        return view('pages/operator/laporan_nilai_siswa', [
+            'title'         => 'Laporan Nilai Siswa | SDN Talun 2 Kota Serang',
+            'sub_judul'     => 'Laporan Nilai Siswa',
+            'nav_link'      => 'Laporan Nilai',
+            'd_nilai'       => $rows,        // berisi nilai + siswa + TA + mapel + kategori
+            'q'             => $q,
+            'tahunajaran'   => $idTA,
+            'kategori'      => $kodeKat,
+            'mapel'         => $idMapel,
+            'totalNilai'    => $totalNilai,
+            'totalSiswa'    => $totalSiswa,
+        ]);
+    }
+
+    public function page_tambah_nilai_siswa()
+    {
+        $req     = $this->request;
+        $q       = trim((string)($req->getGet('q') ?? ''));            // cari nama/NISN
+        $idTA    = trim((string)($req->getGet('tahunajaran') ?? ''));  // id_tahun_ajaran (opsional)
+        $kodeKat = trim((string)($req->getGet('kategori') ?? ''));     // opsional: UTS/UAS
+        $idMapel = trim((string)($req->getGet('mapel') ?? ''));        // opsional: id_mapel
+
+        $nilaiModel = new \App\Models\NilaiSiswaModel();
+
+        // ====== LIST DATA (tabel utama + join alias) ======
+        $builder = $nilaiModel->builder()->from('tb_nilai_siswa ns')
+            ->select("
+            ns.id_nilai, ns.siswa_id, ns.tahun_ajaran_id, ns.mapel_id, ns.kategori_id, ns.skor, ns.tanggal, ns.keterangan,
+
+            s.nisn      AS siswa_nisn,
+            s.full_name AS siswa_nama,
+            s.gender    AS siswa_gender,
+
+            ta.tahun    AS ta_tahun,
+            ta.semester AS ta_semester,
+
+            m.nama      AS mapel_nama,
+
+            k.kode      AS kategori_kode,
+            k.nama      AS kategori_nama
+        ")
+            ->join('tb_siswa s', 's.id_siswa = ns.siswa_id', 'left')
+            ->join('tb_tahun_ajaran ta', 'ta.id_tahun_ajaran = ns.tahun_ajaran_id', 'left')
+            ->join('tb_mapel m', 'm.id_mapel = ns.mapel_id', 'left')
+            ->join('tb_kategori_nilai k', 'k.id_kategori = ns.kategori_id', 'left');
+
+        if ($q !== '') {
+            $builder->groupStart()
+                ->like('s.full_name', $q)
+                ->orLike('s.nisn', $q)
+                ->groupEnd();
+        }
+        if ($idTA !== '' && ctype_digit($idTA)) {
+            $builder->where('ns.tahun_ajaran_id', (int)$idTA);
+        }
+        if ($kodeKat !== '') {
+            $builder->where('k.kode', strtoupper($kodeKat));
+        }
+        if ($idMapel !== '' && ctype_digit($idMapel)) {
+            $builder->where('ns.mapel_id', (int)$idMapel);
+        }
+
+        $rows = $builder
+            ->orderBy('s.full_name', 'ASC')
+            ->orderBy('m.nama', 'ASC')
+            ->orderBy('k.kode', 'ASC')
+            ->orderBy('ns.tanggal', 'ASC')
+            ->get()->getResultArray();
+
+        // Ringkasan
+        $totalNilai    = count($rows);
+        $distinctSiswa = [];
+        foreach ($rows as $r) {
+            $distinctSiswa[(int)($r['siswa_id'] ?? 0)] = true;
+        }
+        $totalSiswa = count($distinctSiswa);
+
+        // ====== DROPDOWN LANGSUNG DARI MODEL ======
+        // Siswa
+        $siswaModel = new \App\Models\SiswaModel();
+        $siswaQ = $siswaModel->select('id_siswa, nisn, full_name')->orderBy('full_name', 'ASC');
+        if ($q !== '') {
+            $siswaQ->groupStart()->like('full_name', $q)->orLike('nisn', $q)->groupEnd();
+        }
+        $optSiswa = $siswaQ->findAll(500);
+
+        // Tahun Ajaran
+        $taModel = new \App\Models\TahunAjaranModel();
+        $optTA   = $taModel->select('id_tahun_ajaran, tahun, semester')
+            ->orderBy('tahun', 'DESC')->orderBy('semester', 'ASC')
+            ->findAll(200);
+
+        // Mapel
+        $mapelModel = new \App\Models\ModelMatPel();
+        $optMapel   = $mapelModel->select('id_mapel, nama')
+            ->orderBy('nama', 'ASC')->findAll(300);
+
+        // Kategori Nilai
+        $katModel    = new \App\Models\KategoriNilai();
+        $optKategori = $katModel->select('id_kategori, kode, nama')
+            ->orderBy('nama', 'ASC')->findAll(100);
+
+        // allowedFields (guard)
+        $allowedFields = method_exists($nilaiModel, 'getAllowedFields')
+            ? $nilaiModel->getAllowedFields()
+            : ['siswa_id', 'tahun_ajaran_id', 'mapel_id', 'kategori_id', 'skor', 'tanggal', 'keterangan'];
+
+        return view('pages/operator/tambah_laporan_nilai', [
+            'title'         => 'Tambah/Laporan Nilai Siswa | SDN Talun 2 Kota Serang',
+            'sub_judul'     => 'Data Nilai Siswa',
+            'nav_link'      => 'Nilai Siswa',
+
+            // data tabel
+            'd_nilai'       => $rows,
+
+            // filter GET
+            'q'             => $q,
+            'tahunajaran'   => $idTA,
+            'kategori'      => $kodeKat,
+            'mapel'         => $idMapel,
+
+            // ringkasan
+            'totalNilai'    => $totalNilai,
+            'totalSiswa'    => $totalSiswa,
+
+            // dropdown sources
+            'optSiswa'      => $optSiswa,
+            'optTA'         => $optTA,
+            'optMapel'      => $optMapel,
+            'optKategori'   => $optKategori,
+
+            // guard form
+            'allowedFields' => $allowedFields,
+        ]);
+    }
+
+    public function aksi_tambah_nilai_siswa()
+    {
+        $m = new \App\Models\NilaiSiswaModel();
+
+        // Normalisasi & ambil nilai input
+        $data = [
+            'siswa_id'        => (string) $this->request->getPost('siswa_id'),
+            'tahun_ajaran_id' => (string) $this->request->getPost('tahun_ajaran_id'),
+            'mapel_id'        => (string) $this->request->getPost('mapel_id'),
+            'kategori_id'     => (string) $this->request->getPost('kategori_id'),
+            'skor'            => (string) $this->request->getPost('skor'),
+            'tanggal'         => (string) $this->request->getPost('tanggal'),
+            'keterangan'      => (string) $this->request->getPost('keterangan'),
+        ];
+
+        // Validasi (Bahasa Indonesia)
+        $rules = [
+            'siswa_id' => [
+                'label'  => 'Siswa',
+                'rules'  => 'required|is_natural_no_zero|is_not_unique[tb_siswa.id_siswa]',
+                'errors' => [
+                    'required'           => '{field} wajib dipilih.',
+                    'is_natural_no_zero' => '{field} tidak valid.',
+                    'is_not_unique'      => '{field} tidak ditemukan.',
+                ],
+            ],
+            'tahun_ajaran_id' => [
+                'label'  => 'Tahun Ajaran',
+                'rules'  => 'required|is_natural_no_zero|is_not_unique[tb_tahun_ajaran.id_tahun_ajaran]',
+                'errors' => [
+                    'required'           => '{field} wajib dipilih.',
+                    'is_natural_no_zero' => '{field} tidak valid.',
+                    'is_not_unique'      => '{field} tidak ditemukan.',
+                ],
+            ],
+            'mapel_id' => [
+                'label'  => 'Mata Pelajaran',
+                'rules'  => 'required|is_natural_no_zero|is_not_unique[tb_mapel.id_mapel]',
+                'errors' => [
+                    'required'           => '{field} wajib dipilih.',
+                    'is_natural_no_zero' => '{field} tidak valid.',
+                    'is_not_unique'      => '{field} tidak ditemukan.',
+                ],
+            ],
+            'kategori_id' => [
+                'label'  => 'Kategori Penilaian',
+                'rules'  => 'required|is_natural_no_zero|is_not_unique[tb_kategori_nilai.id_kategori]',
+                'errors' => [
+                    'required'           => '{field} wajib dipilih.',
+                    'is_natural_no_zero' => '{field} tidak valid.',
+                    'is_not_unique'      => '{field} tidak ditemukan.',
+                ],
+            ],
+            'skor' => [
+                'label'  => 'Skor',
+                'rules'  => 'required|decimal|greater_than_equal_to[0]|less_than_equal_to[100]',
+                'errors' => [
+                    'required'              => '{field} wajib diisi.',
+                    'decimal'               => '{field} harus berupa angka/desimal.',
+                    'greater_than_equal_to' => '{field} minimal {param}.',
+                    'less_than_equal_to'    => '{field} maksimal {param}.',
+                ],
+            ],
+            'tanggal' => [
+                'label'  => 'Tanggal',
+                'rules'  => 'required|valid_date[Y-m-d]',
+                'errors' => [
+                    'required'   => '{field} wajib diisi.',
+                    'valid_date' => '{field} tidak valid (format: YYYY-MM-DD).',
+                ],
+            ],
+            'keterangan' => [
+                'label'  => 'Keterangan',
+                'rules'  => 'permit_empty|max_length[200]',
+                'errors' => [
+                    'max_length' => '{field} maksimal {param} karakter.',
+                ],
+            ],
+        ];
+
+        if (! $this->validate($rules)) {
+            return redirect()->back()->withInput()->with('errors', $this->validator->getErrors());
+        }
+
+        // Pastikan hanya field yang diizinkan yang tersimpan
+        $payload = array_intersect_key($data, array_flip($m->getAllowedFields()));
+
+        // ===== CEK DUPLIKASI: siswa_id + tahun_ajaran_id + mapel_id + kategori_id =====
+        $exists = (clone $m)
+            ->where('siswa_id',        $payload['siswa_id'])
+            ->where('tahun_ajaran_id', $payload['tahun_ajaran_id'])
+            ->where('mapel_id',        $payload['mapel_id'])
+            ->where('kategori_id',     $payload['kategori_id'])
+            ->countAllResults();
+
+        if ($exists > 0) {
+            // Ambil label untuk pesan yang informatif
+            $db   = \Config\Database::connect();
+            $nama = $db->table('tb_siswa')->select('full_name')->where('id_siswa', $payload['siswa_id'])->get()->getRow('full_name');
+            $map  = $db->table('tb_mapel')->select('nama')->where('id_mapel', $payload['mapel_id'])->get()->getRow('nama');
+            $kat  = $db->table('tb_kategori_nilai')->select('kode')->where('id_kategori', $payload['kategori_id'])->get()->getRow('kode');
+
+            return redirect()->back()->withInput()->with(
+                'sweet_error',
+                'Duplikat nilai: ' . ($nama ?: 'Siswa') . ' - ' . ($map ?: 'Mapel') . ' - ' . ($kat ?: 'Kategori') . ' sudah ada.'
+            );
+        }
+
+        try {
+            $m->insert($payload);
+            return redirect()
+                ->to(base_url('operator/laporan/nilai-siswa'))
+                ->with('sweet_success', 'Nilai siswa berhasil ditambahkan.');
+        } catch (\Throwable $e) {
+            // Tangkap kemungkinan duplicate key jika ada unique index di DB
+            if (isset($e->errorInfo[1]) && (int)$e->errorInfo[1] === 1062) {
+                return redirect()->back()->withInput()->with(
+                    'sweet_error',
+                    'Duplikat nilai: kombinasi siswa/TA/mapel/kategori sudah ada.'
+                );
+            }
+            return redirect()->back()->withInput()->with('errors', ['db' => $e->getMessage()]);
+        }
+    }
+    public function page_edit_nilai_siswa($idNilai = null)
+    {
+        $req     = $this->request;
+
+        // ===== Filter GET (untuk konteks kembali) =====
+        $q       = trim((string)($req->getGet('q') ?? ''));            // cari nama/NISN
+        $idTA    = trim((string)($req->getGet('tahunajaran') ?? ''));  // id_tahun_ajaran (opsional)
+        $kodeKat = trim((string)($req->getGet('kategori') ?? ''));     // opsional: UTS/UAS
+        $idMapel = trim((string)($req->getGet('mapel') ?? ''));        // opsional: id_mapel
+
+        // ===== Validasi parameter utama =====
+        if ($idNilai === null || !ctype_digit((string)$idNilai)) {
+            $redirectUrl = base_url('operator/laporan/nilai-siswa') . '?' . http_build_query([
+                'q'           => $q,
+                'tahunajaran' => $idTA,
+                'kategori'    => $kodeKat,
+                'mapel'       => $idMapel,
+            ]);
+            return redirect()->to($redirectUrl)->with('sweet_error', 'Parameter nilai tidak valid.');
+        }
+
+        $nilaiModel = new \App\Models\NilaiSiswaModel();
+
+        // ===== Ambil 1 data nilai (join alias untuk tampilan) =====
+        $row = $nilaiModel->builder()->from('tb_nilai_siswa ns')
+            ->select("
+            ns.id_nilai, ns.siswa_id, ns.tahun_ajaran_id, ns.mapel_id, ns.kategori_id, ns.skor, ns.tanggal, ns.keterangan,
+
+            s.nisn      AS siswa_nisn,
+            s.full_name AS siswa_nama,
+            s.gender    AS siswa_gender,
+
+            ta.tahun    AS ta_tahun,
+            ta.semester AS ta_semester,
+
+            m.nama      AS mapel_nama,
+
+            k.kode      AS kategori_kode,
+            k.nama      AS kategori_nama
+        ")
+            ->join('tb_siswa s', 's.id_siswa = ns.siswa_id', 'left')
+            ->join('tb_tahun_ajaran ta', 'ta.id_tahun_ajaran = ns.tahun_ajaran_id', 'left')
+            ->join('tb_mapel m', 'm.id_mapel = ns.mapel_id', 'left')
+            ->join('tb_kategori_nilai k', 'k.id_kategori = ns.kategori_id', 'left')
+            ->where('ns.id_nilai', (int)$idNilai)
+            ->get()->getRowArray();
+
+        if (! $row) {
+            $redirectUrl = base_url('operator/laporan/nilai-siswa') . '?' . http_build_query([
+                'q'           => $q,
+                'tahunajaran' => $idTA,
+                'kategori'    => $kodeKat,
+                'mapel'       => $idMapel,
+            ]);
+            return redirect()->to($redirectUrl)->with('sweet_error', 'Data nilai tidak ditemukan.');
+        }
+
+        // ====== DROPDOWN (sama seperti page_tambah...) ======
+        // Siswa
+        $siswaModel = new \App\Models\SiswaModel();
+        $siswaQ = $siswaModel->select('id_siswa, nisn, full_name')->orderBy('full_name', 'ASC');
+        if ($q !== '') {
+            $siswaQ->groupStart()->like('full_name', $q)->orLike('nisn', $q)->groupEnd();
+        }
+        $optSiswa = $siswaQ->findAll(500);
+
+        // Tahun Ajaran
+        $taModel = new \App\Models\TahunAjaranModel();
+        $optTA   = $taModel->select('id_tahun_ajaran, tahun, semester')
+            ->orderBy('tahun', 'DESC')->orderBy('semester', 'ASC')
+            ->findAll(200);
+
+        // Mapel
+        $mapelModel = new \App\Models\ModelMatPel();
+        $optMapel   = $mapelModel->select('id_mapel, nama')
+            ->orderBy('nama', 'ASC')->findAll(300);
+
+        // Kategori Nilai
+        $katModel    = new \App\Models\KategoriNilai();
+        $optKategori = $katModel->select('id_kategori, kode, nama')
+            ->orderBy('nama', 'ASC')->findAll(100);
+
+        // allowedFields (guard)
+        $allowedFields = method_exists($nilaiModel, 'getAllowedFields')
+            ? $nilaiModel->getAllowedFields()
+            : ['siswa_id', 'tahun_ajaran_id', 'mapel_id', 'kategori_id', 'skor', 'tanggal', 'keterangan'];
+
+        // ===== URL kembali (bawa filter) agar UX enak =====
+        $backUrl = base_url('operator/laporan/nilai-siswa') . '?' . http_build_query([
+            'q'           => $q,
+            'tahunajaran' => $idTA,
+            'kategori'    => $kodeKat,
+            'mapel'       => $idMapel,
+        ]);
+
+        return view('pages/operator/edit_laporan_nilai', [
+            'title'         => 'Edit Nilai Siswa | SDN Talun 2 Kota Serang',
+            'sub_judul'     => 'Edit Nilai',
+            'nav_link'      => 'Nilai Siswa',
+
+            // data utama
+            'row'           => $row,          // record yang akan diedit
+            'id_nilai'      => (int)$idNilai, // convenience
+
+            // filter GET (konteks)
+            'q'             => $q,
+            'tahunajaran'   => $idTA,
+            'kategori'      => $kodeKat,
+            'mapel'         => $idMapel,
+            'backUrl'       => $backUrl,
+
+            // dropdown sources
+            'optSiswa'      => $optSiswa,
+            'optTA'         => $optTA,
+            'optMapel'      => $optMapel,
+            'optKategori'   => $optKategori,
+
+            // guard form
+            'allowedFields' => $allowedFields,
+        ]);
+    }
+    public function aksi_edit_nilai_siswa($idNilai = null)
+    {
+        // ID dari route wajib numerik
+        if ($idNilai === null || !ctype_digit((string)$idNilai)) {
+            return redirect()->to(base_url('operator/laporan/nilai-siswa'))
+                ->with('sweet_error', 'Parameter nilai tidak valid.');
+        }
+        $idNilai = (int) $idNilai;
+
+        $m   = new \App\Models\NilaiSiswaModel();
+        $req = $this->request;
+
+        // Pastikan data ada
+        $current = $m->find($idNilai);
+        if (! $current) {
+            return redirect()->to(base_url('operator/laporan/nilai-siswa'))
+                ->with('sweet_error', 'Data nilai tidak ditemukan.');
+        }
+
+        // ===== (OPSIONAL) Deteksi manipulasi hidden id_nilai =====
+        $postedId = trim((string) ($req->getPost('id_nilai') ?? ''));
+        if ($postedId !== '' && ctype_digit($postedId) && (int)$postedId !== $idNilai) {
+            return redirect()->back()->withInput()->with(
+                'sweet_error',
+                'Manipulasi parameter terdeteksi: ID tidak sesuai.'
+            );
+        }
+
+        // ===== Ambil filter GET untuk redirect balik =====
+        $q         = trim((string)($req->getGet('q') ?? ''));
+        $idTAGet   = trim((string)($req->getGet('tahunajaran') ?? ''));
+        $kodeKat   = trim((string)($req->getGet('kategori') ?? ''));
+        $idMapelGt = trim((string)($req->getGet('mapel') ?? ''));
+        $redirectUrl = base_url('operator/laporan/nilai-siswa') . '?' . http_build_query([
+            'q'           => $q,
+            'tahunajaran' => $idTAGet,
+            'kategori'    => $kodeKat,
+            'mapel'       => $idMapelGt,
+        ]);
+
+        // ===== Input =====
+        $data = [
+            'siswa_id'        => (string) $req->getPost('siswa_id'),
+            'tahun_ajaran_id' => (string) $req->getPost('tahun_ajaran_id'),
+            'mapel_id'        => (string) $req->getPost('mapel_id'),
+            'kategori_id'     => (string) $req->getPost('kategori_id'),
+            'skor'            => (string) $req->getPost('skor'),
+            'tanggal'         => (string) $req->getPost('tanggal'),
+            'keterangan'      => (string) $req->getPost('keterangan'),
+            // 'id_nilai' JANGAN diambil dari POST
+        ];
+
+        // ===== Validasi =====
+        $rules = [
+            'siswa_id' => [
+                'label'  => 'Siswa',
+                'rules'  => 'required|is_natural_no_zero|is_not_unique[tb_siswa.id_siswa]',
+                'errors' => [
+                    'required'           => '{field} wajib dipilih.',
+                    'is_natural_no_zero' => '{field} tidak valid.',
+                    'is_not_unique'      => '{field} tidak ditemukan.',
+                ],
+            ],
+            'tahun_ajaran_id' => [
+                'label'  => 'Tahun Ajaran',
+                'rules'  => 'required|is_natural_no_zero|is_not_unique[tb_tahun_ajaran.id_tahun_ajaran]',
+                'errors' => [
+                    'required'           => '{field} wajib dipilih.',
+                    'is_natural_no_zero' => '{field} tidak valid.',
+                    'is_not_unique'      => '{field} tidak ditemukan.',
+                ],
+            ],
+            'mapel_id' => [
+                'label'  => 'Mata Pelajaran',
+                'rules'  => 'required|is_natural_no_zero|is_not_unique[tb_mapel.id_mapel]',
+                'errors' => [
+                    'required'           => '{field} wajib dipilih.',
+                    'is_natural_no_zero' => '{field} tidak valid.',
+                    'is_not_unique'      => '{field} tidak ditemukan.',
+                ],
+            ],
+            'kategori_id' => [
+                'label'  => 'Kategori Penilaian',
+                'rules'  => 'required|is_natural_no_zero|is_not_unique[tb_kategori_nilai.id_kategori]',
+                'errors' => [
+                    'required'           => '{field} wajib dipilih.',
+                    'is_natural_no_zero' => '{field} tidak valid.',
+                    'is_not_unique'      => '{field} tidak ditemukan.',
+                ],
+            ],
+            'skor' => [
+                'label'  => 'Skor',
+                'rules'  => 'required|decimal|greater_than_equal_to[0]|less_than_equal_to[100]',
+                'errors' => [
+                    'required'              => '{field} wajib diisi.',
+                    'decimal'               => '{field} harus berupa angka/desimal.',
+                    'greater_than_equal_to' => '{field} minimal {param}.',
+                    'less_than_equal_to'    => '{field} maksimal {param}.',
+                ],
+            ],
+            'tanggal' => [
+                'label'  => 'Tanggal',
+                'rules'  => 'required|valid_date[Y-m-d]',
+                'errors' => [
+                    'required'   => '{field} wajib diisi.',
+                    'valid_date' => '{field} tidak valid (format: YYYY-MM-DD).',
+                ],
+            ],
+            'keterangan' => [
+                'label'  => 'Keterangan',
+                'rules'  => 'permit_empty|max_length[200]',
+                'errors' => [
+                    'max_length' => '{field} maksimal {param} karakter.',
+                ],
+            ],
+        ];
+
+        if (! $this->validate($rules)) {
+            return redirect()->back()->withInput()->with('errors', $this->validator->getErrors());
+        }
+
+        // Whitelist fields + pastikan tidak ada id_nilai
+        $payload = array_intersect_key($data, array_flip($m->getAllowedFields()));
+        unset($payload['id_nilai']);
+
+        // ===== Cegah duplikasi kombinasi kunci (kecuali record ini) =====
+        $exists = (clone $m)
+            ->where('siswa_id',        $payload['siswa_id'])
+            ->where('tahun_ajaran_id', $payload['tahun_ajaran_id'])
+            ->where('mapel_id',        $payload['mapel_id'])
+            ->where('kategori_id',     $payload['kategori_id'])
+            ->where('id_nilai !=',     $idNilai)
+            ->countAllResults();
+
+        if ($exists > 0) {
+            $db   = \Config\Database::connect();
+            $nama = $db->table('tb_siswa')->select('full_name')->where('id_siswa', $payload['siswa_id'])->get()->getRow('full_name');
+            $map  = $db->table('tb_mapel')->select('nama')->where('id_mapel', $payload['mapel_id'])->get()->getRow('nama');
+            $kat  = $db->table('tb_kategori_nilai')->select('kode')->where('id_kategori', $payload['kategori_id'])->get()->getRow('kode');
+
+            return redirect()->back()->withInput()->with(
+                'sweet_error',
+                'Duplikat nilai: ' . ($nama ?: 'Siswa') . ' - ' . ($map ?: 'Mapel') . ' - ' . ($kat ?: 'Kategori') . ' sudah ada.'
+            );
+        }
+
+        try {
+            $m->update($idNilai, $payload); // gunakan ID dari route, bukan dari POST
+            return redirect()->to($redirectUrl)->with('sweet_success', 'Nilai siswa berhasil diperbarui.');
+        } catch (\Throwable $e) {
+            if (isset($e->errorInfo[1]) && (int)$e->errorInfo[1] === 1062) {
+                return redirect()->back()->withInput()->with(
+                    'sweet_error',
+                    'Duplikat nilai: kombinasi siswa/TA/mapel/kategori sudah ada.'
+                );
+            }
+            return redirect()->back()->withInput()->with('errors', ['db' => $e->getMessage()]);
+        }
+    }
+
+
+
+    public function aksi_delete_nilai_siswa($idOrNisn = null)
+    {
+        $req = $this->request;
+
+        // ---- Ambil filter untuk dibawa saat redirect ----
+        $q           = trim((string)($req->getGet('q') ?? ''));
+        $idTA        = trim((string)($req->getGet('tahunajaran') ?? '')); // id_tahun_ajaran (opsional)
+        $kodeKat     = trim((string)($req->getGet('kategori') ?? ''));   // kode kategori: UTS/UAS (opsional)
+        $idMapel     = trim((string)($req->getGet('mapel') ?? ''));      // id_mapel (opsional)
+
+        $redirectUrl = base_url('operator/laporan/nilai-siswa') . '?' . http_build_query([
+            'q'           => $q,
+            'tahunajaran' => $idTA,
+            'kategori'    => $kodeKat,
+            'mapel'       => $idMapel,
+        ]);
+
+        if ($idOrNisn === null || $idOrNisn === '') {
+            return redirect()->to($redirectUrl)->with('sweet_error', 'Parameter penghapusan tidak valid.');
+        }
+
+        $db = \Config\Database::connect();
+        $mNilai = new \App\Models\NilaiSiswaModel();
+
+        try {
+            // ------------------------------
+            // MODE 1: id_nilai (numerik)
+            // ------------------------------
+            if (ctype_digit((string)$idOrNisn)) {
+                $idNilai = (int)$idOrNisn;
+
+                // Pastikan ada datanya
+                $exist = $mNilai->where('id_nilai', $idNilai)->first();
+                if (! $exist) {
+                    return redirect()->to($redirectUrl)->with('sweet_error', 'Data nilai tidak ditemukan atau sudah dihapus.');
+                }
+
+                $mNilai->where('id_nilai', $idNilai)->delete();
+                $affected = $db->affectedRows();
+
+                if ($affected > 0) {
+                    return redirect()->to($redirectUrl)->with('sweet_success', '1 data nilai berhasil dihapus.');
+                }
+                return redirect()->to($redirectUrl)->with('sweet_error', 'Gagal menghapus data nilai.');
+            }
+
+            // ---------------------------------
+            // MODE 2: NISN (string) + filter
+            // ---------------------------------
+            $nisn = trim((string)$idOrNisn);
+            if ($nisn === '') {
+                return redirect()->to($redirectUrl)->with('sweet_error', 'NISN tidak valid.');
+            }
+
+            // Ambil id_siswa dari NISN
+            $siswaIds = $db->table('tb_siswa')->select('id_siswa')->where('nisn', $nisn)->get()->getResultArray();
+            if (empty($siswaIds)) {
+                return redirect()->to($redirectUrl)->with('sweet_error', 'Siswa dengan NISN tersebut tidak ditemukan.');
+            }
+            $siswaIds = array_map(fn($r) => (int)$r['id_siswa'], $siswaIds);
+
+            // Opsional: map kode kategori (UTS/UAS) -> id_kategori
+            $kategoriId = null;
+            if ($kodeKat !== '') {
+                $katRow = $db->table('tb_kategori_nilai')->select('id_kategori')->where('kode', strtoupper($kodeKat))->get()->getRowArray();
+                if (! $katRow) {
+                    return redirect()->to($redirectUrl)->with('sweet_error', 'Kategori penilaian tidak dikenali.');
+                }
+                $kategoriId = (int)$katRow['id_kategori'];
+            }
+
+            // Build where delete
+            $builder = $db->table('tb_nilai_siswa');
+
+            // Wajib: siswa_id ∈ (hasil dari NISN)
+            $builder->whereIn('siswa_id', $siswaIds);
+
+            // Opsional: filter tahun ajaran
+            if ($idTA !== '' && ctype_digit($idTA)) {
+                $builder->where('tahun_ajaran_id', (int)$idTA);
+            }
+
+            // Opsional: filter kategori (pakai id_kategori hasil mapping)
+            if ($kategoriId !== null) {
+                $builder->where('kategori_id', $kategoriId);
+            }
+
+            // Opsional: filter mapel
+            if ($idMapel !== '' && ctype_digit($idMapel)) {
+                $builder->where('mapel_id', (int)$idMapel);
+            }
+
+            // Eksekusi hapus
+            $builder->delete();
+            $affected = $db->affectedRows();
+
+            if ($affected > 0) {
+                return redirect()->to($redirectUrl)->with('sweet_success', $affected . ' data nilai berhasil dihapus.');
+            }
+            return redirect()->to($redirectUrl)->with('sweet_error', 'Tidak ada data yang cocok untuk dihapus.');
+        } catch (\Throwable $e) {
+            return redirect()->to($redirectUrl)->with('sweet_error', 'Terjadi kesalahan: ' . $e->getMessage());
+        }
+    }
+
+
+
+    // kategori
+    public function page_tambah_kategori()
+    {
+        $req   = $this->request;
+
+        // ==== GET filters ====
+        $q     = trim((string)($req->getGet('q') ?? ''));              // cari kode/nama
+        $wajib = trim((string)($req->getGet('wajib') ?? ''));          // '' | '0' | '1'
+        $bmin  = trim((string)($req->getGet('bmin') ?? ''));           // bobot min
+        $bmax  = trim((string)($req->getGet('bmax') ?? ''));           // bobot max
+        $sort  = strtolower((string)($req->getGet('sort') ?? 'kode')); // kode|nama|bobot|created_at
+        $dir   = strtolower((string)($req->getGet('dir')  ?? 'asc'));  // asc|desc
+
+        // Normalisasi sort & dir
+        $allowedSorts = ['kode', 'nama', 'bobot', 'created_at'];
+        if (!in_array($sort, $allowedSorts, true)) $sort = 'kode';
+        $dir = $dir === 'desc' ? 'DESC' : 'ASC';
+
+        $katModel = new \App\Models\KategoriNilai();
+
+        // Penting: JANGAN tambah ->from() lagi agar tidak double FROM (duplikasi baris)
+        $builder = $katModel->builder()
+            ->select('id_kategori, kode, nama, bobot, is_wajib, created_at, updated_at');
+
+        // Filter q: kode/nama
+        if ($q !== '') {
+            $builder->groupStart()
+                ->like('kode', $q)
+                ->orLike('nama', $q)
+                ->groupEnd();
+        }
+
+        // Filter wajib
+        if ($wajib === '0' || $wajib === '1') {
+            $builder->where('is_wajib', (int)$wajib);
+        }
+
+        // Filter bobot min/max
+        if ($bmin !== '' && is_numeric($bmin)) $builder->where('bobot >=', (float)$bmin);
+        if ($bmax !== '' && is_numeric($bmax)) $builder->where('bobot <=', (float)$bmax);
+
+        // Urutkan
+        $builder->orderBy($sort, $dir);
+        if ($sort !== 'kode') $builder->orderBy('kode', 'ASC'); // stabil
+
+        $rows = $builder->get()->getResultArray();
+
+        // Ringkasan
+        $totalKategori = count($rows);
+        $totalWajib = 0;
+        foreach ($rows as $r) {
+            if ((int)($r['is_wajib'] ?? 0) === 1) $totalWajib++;
+        }
+
+        // allowedFields → guard form
+        $allowedFields = method_exists($katModel, 'getAllowedFields')
+            ? $katModel->getAllowedFields()
+            : ['kode', 'nama', 'bobot', 'is_wajib'];
+
+        return view('pages/operator/data-kategori', [
+            'title'         => 'Kategori Penilaian | SDN Talun 2 Kota Serang',
+            'sub_judul'     => 'Kategori Penilaian',
+            'nav_link'      => 'Kategori Nilai',
+
+            // data
+            'd_kategori'    => $rows,
+
+            // sticky filters
+            'q'             => $q,
+            'wajib'         => $wajib,
+            'bmin'          => $bmin,
+            'bmax'          => $bmax,
+            'sort'          => $sort,
+            'dir'           => strtolower($dir),
+
+            // ringkasan
+            'totalKategori' => $totalKategori,
+            'totalWajib'    => $totalWajib,
+
+            // guard form
+            'allowedFields' => $allowedFields,
+        ]);
+    }
+
+
+    public function aksi_tambah_kategori()
+    {
+        $katModel = new KategoriNilai();
+
+        // normalisasi is_wajib (hidden 0 + checkbox 1)
+        $isWajib = $this->request->getPost('is_wajib') === '1' ? 1 : 0;
+
+        $data = [
+            'kode'     => trim((string)$this->request->getPost('kode')),
+            'nama'     => trim((string)$this->request->getPost('nama')),
+            'bobot'    => (string)$this->request->getPost('bobot'), // validasi di rules
+            'is_wajib' => $isWajib,
+        ];
+
+        $rules = [
+            'kode' => [
+                'label'  => 'Kode',
+                'rules'  => 'required|alpha_numeric_punct|min_length[1]|max_length[20]|is_unique[tb_kategori_nilai.kode]',
+                'errors' => [
+                    'required'             => '{field} wajib diisi.',
+                    'alpha_numeric_punct'  => '{field} hanya boleh berisi huruf, angka, spasi, dan tanda baca umum.',
+                    'min_length'           => '{field} minimal {param} karakter.',
+                    'max_length'           => '{field} maksimal {param} karakter.',
+                    'is_unique'            => '{field} sudah digunakan. Gunakan kode lain.',
+                ],
+            ],
+            'nama' => [
+                'label'  => 'Nama',
+                'rules'  => 'required|min_length[2]|max_length[100]',
+                'errors' => [
+                    'required'   => '{field} wajib diisi.',
+                    'min_length' => '{field} minimal {param} karakter.',
+                    'max_length' => '{field} maksimal {param} karakter.',
+                ],
+            ],
+            'bobot' => [
+                'label'  => 'Bobot',
+                'rules'  => 'required|decimal|greater_than_equal_to[0]|less_than_equal_to[100]',
+                'errors' => [
+                    'required'                 => '{field} wajib diisi.',
+                    'decimal'                  => '{field} harus berupa angka desimal yang valid.',
+                    'greater_than_equal_to'    => '{field} minimal {param}.',
+                    'less_than_equal_to'       => '{field} maksimal {param}.',
+                ],
+            ],
+            'is_wajib' => [
+                'label'  => 'Status Wajib',
+                'rules'  => 'permit_empty|in_list[0,1]',
+                'errors' => [
+                    'in_list' => '{field} hanya boleh bernilai 0 (Opsional) atau 1 (Wajib).',
+                ],
+            ],
+        ];
+
+
+        if (! $this->validate($rules)) {
+            return redirect()->back()->withInput()->with('errors', $this->validator->getErrors());
+        }
+
+        try {
+            $katModel->insert($data);
+            return redirect()
+                ->to(base_url('operator/kategori/tambah'))
+                ->with('sweet_success', 'Kategori berhasil ditambahkan.');
+        } catch (\Throwable $e) {
+            return redirect()->back()->withInput()->with('errors', ['db' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * DELETE
+     * GET: operator/kategori/delete/{id}
+     */
+
+    public function aksi_delete($id = null)
+    {
+        $katModel = new KategoriNilai();
+        $id = (int)$id;
+
+        if (!$katModel->find($id)) {
+            return redirect()->to(base_url('operator/kategori/tambah'))->with('errors', ['notfound' => 'Data tidak ditemukan.']);
+        }
+
+        try {
+            $katModel->delete($id);
+            return redirect()
+                ->to(base_url('operator/kategori/tambah'))
+                ->with('sweet_success', 'Kategori berhasil dihapus.');
+        } catch (\Throwable $e) {
+            return redirect()
+                ->to(base_url('operator/kategori/tambah'))
+                ->with('sweet_errors', ['db' => $e->getMessage()]);
+        }
     }
 }

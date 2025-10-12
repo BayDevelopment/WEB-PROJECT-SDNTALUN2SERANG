@@ -210,5 +210,24 @@
             form.submit();
         });
     });
+
+    function confirmDeleteUser(id) {
+        Swal.fire({
+            title: "Apakah Anda yakin?",
+            text: "Data yang dihapus tidak dapat dikembalikan!",
+            icon: "warning",
+            showCancelButton: true,
+            confirmButtonColor: "#d33",
+            cancelButtonColor: "#3085d6",
+            confirmButtonText: "Ya, hapus!",
+            cancelButtonText: "Batal",
+            reverseButtons: true,
+            focusCancel: true
+        }).then((r) => {
+            if (r.isConfirmed) {
+                window.location.href = "<?= base_url('operator/data-user/delete/') ?>" + encodeURIComponent(id);
+            }
+        });
+    }
 </script>
 <?= $this->endSection() ?>

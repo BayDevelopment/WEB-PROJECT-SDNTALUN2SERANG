@@ -2,6 +2,7 @@
 <?= $this->section('content') ?>
 
 <style>
+    /* ===== Base ===== */
     .page-title {
         font-weight: 800
     }
@@ -19,8 +20,7 @@
     .card-header-modern {
         padding: .85rem 1.25rem;
         border-bottom: 1px solid #eef2f7;
-        background:
-            linear-gradient(135deg, rgba(59, 130, 246, .12), rgba(99, 102, 241, .10));
+        background: linear-gradient(135deg, rgba(59, 130, 246, .12), rgba(99, 102, 241, .10));
         border-radius: 1rem 1rem 0 0
     }
 
@@ -28,12 +28,12 @@
         font-weight: 700
     }
 
+    /* ===== Hero ===== */
     .profile-hero {
         position: relative;
         border-radius: 1rem;
         overflow: hidden;
-        background:
-            linear-gradient(135deg, #dbeafe, #ede9fe)
+        background: linear-gradient(135deg, #dbeafe, #ede9fe)
     }
 
     .profile-hero .cover {
@@ -83,6 +83,7 @@
         color: #fff
     }
 
+    /* ===== Meta list ===== */
     .meta-list {
         margin: 0;
         padding: 0;
@@ -106,6 +107,93 @@
         color: #4b5563
     }
 
+    /* ===== Responsiveness ===== */
+    .min-w-0 {
+        min-width: 0
+    }
+
+    .header-actions {
+        display: flex;
+        gap: .5rem;
+        flex-wrap: wrap
+    }
+
+    .kelas-row {
+        align-items: stretch
+    }
+
+    .kelas-row>.form-select {
+        flex: 1 1 auto;
+        min-width: 0
+    }
+
+    .kelas-row>.btn {
+        flex: 0 0 auto
+    }
+
+    .form-actions {
+        display: flex;
+        gap: .5rem;
+        flex-wrap: wrap;
+        justify-content: flex-end
+    }
+
+    .empty-illustration {
+        width: 220px;
+        max-width: 75%;
+        height: auto;
+        opacity: .9
+    }
+
+    @media (max-width:576px) {
+        .avatar-120 {
+            width: 84px;
+            height: 84px
+        }
+
+        .profile-hero .body {
+            padding: .75rem 1rem 1rem
+        }
+
+        .card-body {
+            padding: 1rem
+        }
+
+        .card-header-modern {
+            padding: .75rem 1rem
+        }
+
+        .header-actions .btn {
+            width: 100%
+        }
+
+        .empty-illustration {
+            width: 160px;
+            max-width: 85%
+        }
+    }
+
+    /* ===== Overlay submit ===== */
+    .form-blocker {
+        position: absolute;
+        inset: 0;
+        background: rgba(255, 255, 255, .5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: .75rem;
+        z-index: 3
+    }
+
+    .form-wrap-relative {
+        position: relative
+    }
+
+    .d-none {
+        display: none !important
+    }
+
+    /* ===== Print ===== */
     @media print {
         .no-print {
             display: none !important
@@ -127,7 +215,7 @@
     <!-- Header -->
     <div class="d-sm-flex align-items-center justify-content-between mb-3">
         <div>
-            <h1 class="mt-4 page-title"><?= esc($sub_judul ?? 'Detail Siswa') ?></h1>
+            <h1 class="mt-4 page-title"><?= esc($sub_judul ?? 'Detail Guru') ?></h1>
             <ol class="breadcrumb breadcrumb-modern mb-0">
                 <li class="breadcrumb-item"><a href="<?= base_url('operator/dashboard') ?>">Dashboard</a></li>
                 <li class="breadcrumb-item"><a href="<?= base_url('operator/data-guru') ?>">Data Guru</a></li>
@@ -135,11 +223,11 @@
             </ol>
         </div>
 
-        <div class="no-print mt-3 mt-sm-0 d-flex gap-2">
+        <div class="no-print mt-3 mt-sm-0 header-actions">
             <a href="<?= base_url('operator/data-guru') ?>" class="btn btn-dark rounded-pill">
                 <i class="fa-solid fa-arrow-left me-2"></i> Kembali
             </a>
-            <a href="<?= base_url('operator/edit-guru/' . urlencode((string)($guru['nip'] ?? ''))) ?>" class="btn btn-primary rounded-pill">
+            <a href="<?= base_url('operator/edit-guru/' . urlencode((string)($guru['nip'] ?? ''))) ?>" class="btn btn-gradient rounded-pill">
                 <i class="fa-solid fa-pen-to-square me-2"></i> Edit
             </a>
         </div>
@@ -153,7 +241,7 @@
 
         <div class="card-body">
             <?php
-            // Siapkan foto
+            // Foto
             $foto = trim((string)($guru['foto'] ?? ''));
             if ($foto !== '' && preg_match('~^https?://~i', $foto)) {
                 $imgSrc = $foto;
@@ -163,35 +251,44 @@
                 $imgSrc = base_url('assets/img/user.png');
             }
 
-            // Jenis kelamin
-            $jk   = strtoupper((string)($guru['jenis_kelamin'] ?? ''));
-            $isL  = $jk === 'L';
-            $isP = $jk === 'P';
+            // JK & Status
+            $jk         = strtoupper((string)($guru['jenis_kelamin'] ?? ''));
+            $isL        = $jk === 'L';
+            $isP        = $jk === 'P';
+            $isActive   = (int)($guru['status_active'] ?? 0) === 1;
+            $statusText = $isActive ? 'Aktif' : 'Nonaktif';
+            $statusClass = $isActive ? 'bg-success' : 'bg-secondary';
+            $userName   = (string)($guru['user_name'] ?? '');
 
-            // Status aktif
-            $isActive     = (int)($guru['status_active'] ?? 0) === 1;
-            $statusText   = $isActive ? 'Aktif' : 'Nonaktif';
-            $statusClass  = $isActive ? 'bg-success' : 'bg-secondary';
-
-            // Username (opsional hasil join)
-            $userName = (string)($guru['user_name'] ?? '');
+            // Error helper
+            $errors = session('errors') ?? [];
+            $hasErr = fn($f) => isset($errors[$f]);
+            $getErr = fn($f) => $errors[$f] ?? '';
             ?>
+
             <!-- Hero -->
             <div class="profile-hero mb-3">
                 <div class="cover"></div>
                 <div class="body">
                     <div class="d-flex flex-column flex-md-row align-items-start align-items-md-center gap-3">
-                        <img src="<?= esc($imgSrc) ?>"
-                            alt="Foto <?= esc($guru['nama_lengkap'] ?? '—') ?>"
-                            class="avatar-120">
+                        <img src="<?= esc($imgSrc) ?>" alt="Foto <?= esc($guru['nama_lengkap'] ?? '—') ?>" class="avatar-120">
 
-                        <div class="flex-grow-1">
+                        <div class="flex-grow-1 min-w-0">
                             <div class="d-flex flex-wrap align-items-center gap-2">
-                                <h3 class="mb-0 fw-bold"><?= esc($guru['nama_lengkap'] ?? '—') ?></h3>
+                                <h3 class="mb-0 fw-bold text-truncate"><?= esc($guru['nama_lengkap'] ?? '—') ?></h3>
+
                                 <span class="badge <?= $isL ? 'badge-male' : ($isP ? 'badge-female' : 'badge-unknown') ?> px-2 py-1 rounded-pill">
                                     <?= $isL ? 'Laki-laki' : ($isP ? 'Perempuan' : '—') ?>
                                 </span>
-                                <span class="badge <?= esc($statusClass) ?> px-2 py-1 rounded-pill"><?= esc($statusText) ?></span>
+
+                                <span class="badge <?= esc($statusClass) ?> px-2 py-1 rounded-pill">
+                                    <?= esc($statusText) ?>
+                                </span>
+
+                                <?php $jabatan = trim((string)($guru['jabatan'] ?? '')); ?>
+                                <span class="badge bg-primary-subtle text-primary px-2 py-1 rounded-pill">
+                                    Jabatan: <?= $jabatan !== '' ? esc($jabatan) : '—' ?>
+                                </span>
                             </div>
 
                             <div class="mt-1 text-muted small">
@@ -209,15 +306,19 @@
                             <?php endif; ?>
                         </div>
                     </div>
+
                 </div>
             </div>
 
             <!-- Grid Informasi -->
             <div class="row g-3">
+                <!-- Informasi Utama -->
                 <div class="col-12 col-lg-6">
                     <div class="card h-100 border-0 shadow-sm">
                         <div class="card-body">
-                            <h6 class="fw-bold mb-3"><i class="fa-regular fa-user me-2"></i>Informasi Utama</h6>
+                            <h6 class="fw-bold mb-3">
+                                <i class="fa-regular fa-user me-2"></i>Informasi Utama
+                            </h6>
                             <ul class="meta-list">
                                 <li>
                                     <span class="meta-icon"><i class="fa-regular fa-id-badge"></i></span>
@@ -249,10 +350,13 @@
                     </div>
                 </div>
 
+                <!-- Kontak & Alamat -->
                 <div class="col-12 col-lg-6">
                     <div class="card h-100 border-0 shadow-sm">
                         <div class="card-body">
-                            <h6 class="fw-bold mb-3"><i class="fa-regular fa-address-card me-2"></i>Kontak & Alamat</h6>
+                            <h6 class="fw-bold mb-3">
+                                <i class="fa-regular fa-address-card me-2"></i>Kontak & Alamat
+                            </h6>
                             <ul class="meta-list">
                                 <li>
                                     <span class="meta-icon"><i class="fa-solid fa-phone"></i></span>
@@ -282,12 +386,14 @@
                     </div>
                 </div>
 
-                <!-- Meta waktu -->
+                <!-- Meta Waktu -->
                 <div class="col-12">
                     <div class="card border-0 shadow-sm">
                         <div class="card-body d-flex flex-wrap gap-4">
                             <div>
-                                <div class="text-muted small"><i class="fa-regular fa-clock me-1"></i> Dibuat</div>
+                                <div class="text-muted small">
+                                    <i class="fa-regular fa-clock me-1"></i> Dibuat
+                                </div>
                                 <div class="fw-semibold">
                                     <?= !empty($guru['created_at'])
                                         ? \CodeIgniter\I18n\Time::parse($guru['created_at'], 'Asia/Jakarta')->toLocalizedString('d MMM y, HH:mm')
@@ -295,7 +401,9 @@
                                 </div>
                             </div>
                             <div>
-                                <div class="text-muted small"><i class="fa-regular fa-pen-to-square me-1"></i> Diperbarui</div>
+                                <div class="text-muted small">
+                                    <i class="fa-regular fa-pen-to-square me-1"></i> Diperbarui
+                                </div>
                                 <div class="fw-semibold">
                                     <?= !empty($guru['updated_at'])
                                         ? \CodeIgniter\I18n\Time::parse($guru['updated_at'], 'Asia/Jakarta')->toLocalizedString('d MMM y, HH:mm')
@@ -305,42 +413,336 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Form: Tambah Penugasan Mapel -->
+                <div class="col-12">
+                    <div class="card border-0 shadow-sm mt-3">
+                        <div class="card-header-modern">
+                            <div class="title-wrap">
+                                <i class="fa-solid fa-circle-info"></i> Detail Penugasan Mapel
+                            </div>
+                        </div>
+
+                        <?php
+                        $hasGuruMapel =
+                            (!empty($gmEdit) && (!empty($gmEdit['id_mapel']) || !empty($gmEdit['id_kelas']) || !empty($gmEdit['id_kelas_list'])))
+                            || (!empty($penugasanRows) && is_array($penugasanRows) && count($penugasanRows) > 0);
+                        ?>
+
+                        <?php if ($hasGuruMapel): ?>
+                            <div class="card-body">
+                                <!-- Update form -->
+                                <form id="formEditGuruMapel"
+                                    action="<?= base_url('operator/detail-guru/' . rawurlencode($guru['nip']) . '/update') ?>"
+                                    method="post" class="row g-3 form-wrap-relative" novalidate>
+                                    <?= csrf_field() ?>
+                                    <input type="hidden" name="_method" value="PUT">
+
+                                    <!-- KONTEKS LAMA (tetap, agar controller tahu mapel/TA sebelum diedit) -->
+                                    <input type="hidden" name="old_id_mapel" value="<?= esc((int)($gmEdit['id_mapel'] ?? 0), 'attr') ?>">
+                                    <input type="hidden" name="old_id_tahun_ajaran" value="<?= esc((int)($gmEdit['id_tahun_ajaran'] ?? 0), 'attr') ?>">
+
+
+                                    <!-- Mapel -->
+                                    <div class="col-12 col-md-4">
+                                        <label class="form-label">Mata Pelajaran</label>
+                                        <?php
+                                        $selectedId = (int) old('id_mapel', (string)($gmEdit['id_mapel'] ?? 0));
+                                        $selectedOpt = null;
+                                        if (!empty($optMapel)) {
+                                            foreach ($optMapel as $m) {
+                                                if ((int)($m['id_mapel'] ?? 0) === $selectedId) {
+                                                    $selectedOpt = $m;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                        ?>
+                                        <select name="id_mapel" class="form-select<?= $hasErr('id_mapel') ? ' is-invalid' : '' ?>" required>
+                                            <?php if ($selectedOpt): ?>
+                                                <option value="<?= esc((int)$selectedOpt['id_mapel'], 'attr') ?>" selected><?= esc($selectedOpt['nama'] ?? 'Mapel') ?></option>
+                                                <?php foreach ($optMapel as $m):
+                                                    $val = (int)($m['id_mapel'] ?? 0);
+                                                    if ($val === $selectedId) continue; ?>
+                                                    <option value="<?= esc($val, 'attr') ?>"><?= esc($m['nama'] ?? 'Mapel') ?></option>
+                                                <?php endforeach; ?>
+                                            <?php else: ?>
+                                                <option value="" disabled selected>— Pilih Mapel —</option>
+                                                <?php if (!empty($optMapel)): foreach ($optMapel as $m): ?>
+                                                        <option value="<?= esc((int)($m['id_mapel'] ?? 0), 'attr') ?>"><?= esc($m['nama'] ?? 'Mapel') ?></option>
+                                                <?php endforeach;
+                                                endif; ?>
+                                            <?php endif; ?>
+                                        </select>
+                                        <?php if ($hasErr('id_mapel')): ?>
+                                            <div class="invalid-feedback d-block"><?= esc($getErr('id_mapel')) ?></div>
+                                        <?php endif; ?>
+                                    </div>
+
+                                    <!-- Kelas (dinamis) -->
+                                    <div class="col-12 col-md-8">
+                                        <label class="form-label d-flex align-items-center justify-content-between">
+                                            <span>Kelas</span>
+                                            <button type="button" id="btnAddKelas" class="btn btn-sm btn-outline-primary">+ Tambah Kelas</button>
+                                        </label>
+
+                                        <div id="kelasContainer" class="d-grid gap-2">
+                                            <?php
+                                            $selectedKelas = (array) (old('id_kelas', isset($gmEdit['id_kelas_list']) ? $gmEdit['id_kelas_list'] : ($gmEdit['id_kelas'] ?? [])));
+                                            if (empty($selectedKelas)) $selectedKelas = [''];
+                                            ?>
+                                            <?php foreach ($selectedKelas as $selVal): ?>
+                                                <div class="d-flex gap-2 kelas-row">
+                                                    <select name="id_kelas[]" class="form-select<?= $hasErr('id_kelas') || $hasErr('id_kelas.*') ? ' is-invalid' : '' ?>" required>
+                                                        <option value="" hidden>— Pilih Kelas —</option>
+                                                        <?php if (!empty($optKelas)): foreach ($optKelas as $k):
+                                                                $val = (int)($k['id_kelas'] ?? 0);
+                                                                $sel = (string)$selVal === (string)$val ? 'selected' : ''; ?>
+                                                                <option value="<?= esc($val, 'attr') ?>" <?= $sel ?>><?= esc($k['nama_kelas'] ?? $k['nama'] ?? 'Kelas') ?></option>
+                                                        <?php endforeach;
+                                                        endif; ?>
+                                                    </select>
+                                                    <button type="button" class="btn btn-outline-danger btnRemoveKelas" title="Hapus baris">&times;</button>
+                                                </div>
+                                            <?php endforeach; ?>
+                                        </div>
+
+                                        <?php if ($hasErr('id_kelas')): ?>
+                                            <div class="invalid-feedback d-block"><?= esc($getErr('id_kelas')) ?></div>
+                                        <?php endif; ?>
+                                        <?php if ($hasErr('id_kelas.*')): ?>
+                                            <div class="invalid-feedback d-block"><?= esc($getErr('id_kelas.*')) ?></div>
+                                        <?php endif; ?>
+
+                                        <template id="kelasRowTpl">
+                                            <div class="d-flex gap-2 kelas-row">
+                                                <select name="id_kelas[]" class="form-select" required>
+                                                    <option value="" hidden>— Pilih Kelas —</option>
+                                                    <?php if (!empty($optKelas)): foreach ($optKelas as $k): ?>
+                                                            <option value="<?= esc((int)($k['id_kelas'] ?? 0), 'attr') ?>"><?= esc($k['nama_kelas'] ?? $k['nama'] ?? 'Kelas') ?></option>
+                                                    <?php endforeach;
+                                                    endif; ?>
+                                                </select>
+                                                <button type="button" class="btn btn-outline-danger btnRemoveKelas" title="Hapus baris">&times;</button>
+                                            </div>
+                                        </template>
+                                    </div>
+
+                                    <!-- Tahun Ajaran -->
+                                    <div class="col-12 col-md-4">
+                                        <label class="form-label">Tahun Ajaran</label>
+                                        <select name="id_tahun_ajaran" class="form-select<?= $hasErr('id_tahun_ajaran') ? ' is-invalid' : '' ?> text-capitalize" required>
+                                            <?php if (!empty($optTahunAjaran)): foreach ($optTahunAjaran as $ta):
+                                                    $val = (int)($ta['id_tahun_ajaran'] ?? 0);
+                                                    $label = $ta['nama'] ?? (($ta['semester'] ?? ''));
+                                                    $sel = (string)old('id_tahun_ajaran', (string)($gmEdit['id_tahun_ajaran'] ?? '')) === (string)$val ? 'selected' : ''; ?>
+                                                    <option value="<?= esc($val, 'attr') ?>" <?= $sel ?>><?= esc($label ?: 'Tahun Ajaran') ?></option>
+                                            <?php endforeach;
+                                            endif; ?>
+                                        </select>
+                                        <?php if ($hasErr('id_tahun_ajaran')): ?>
+                                            <div class="invalid-feedback d-block"><?= esc($getErr('id_tahun_ajaran')) ?></div>
+                                        <?php endif; ?>
+                                    </div>
+
+                                    <!-- Jam per Minggu -->
+                                    <div class="col-12 col-md-4">
+                                        <label class="form-label">Jam per Minggu</label>
+                                        <input type="number" name="jam_per_minggu" min="1" max="40" step="1"
+                                            value="<?= esc(old('jam_per_minggu', (string)($gmEdit['jam_per_minggu'] ?? '')), 'attr') ?>"
+                                            class="form-control<?= $hasErr('jam_per_minggu') ? ' is-invalid' : '' ?>" placeholder="cth: 2" required>
+                                        <?php if ($hasErr('jam_per_minggu')): ?>
+                                            <div class="invalid-feedback d-block"><?= esc($getErr('jam_per_minggu')) ?></div>
+                                        <?php endif; ?>
+                                    </div>
+
+                                    <!-- Keterangan -->
+                                    <div class="col-12 col-md-8">
+                                        <label class="form-label">Keterangan</label>
+                                        <textarea name="keterangan" rows="3" maxlength="190"
+                                            class="form-control<?= $hasErr('keterangan') ? ' is-invalid' : '' ?>"
+                                            placeholder="(opsional)"><?= esc(old('keterangan', (string)($gmEdit['keterangan'] ?? ''))) ?></textarea>
+                                        <?php if ($hasErr('keterangan')): ?>
+                                            <div class="invalid-feedback d-block"><?= esc($getErr('keterangan')) ?></div>
+                                        <?php endif; ?>
+                                    </div>
+
+                                    <!-- Aksi (update + delete form terpisah, tidak nested) -->
+                                    <div class="col-12">
+                                        <div class="form-actions mt-2">
+                                            <button type="submit" class="btn btn-gradient rounded-pill d-inline-flex align-items-center">
+                                                <i class="fa-solid fa-pen-to-square me-2"></i> Update
+                                            </button>
+                                        </div>
+                                    </div>
+                                </form>
+
+                                <!-- Delete ALL (separate form) -->
+                                <div class="form-actions mt-2">
+                                    <form id="formHapusSemuaGuruMapel"
+                                        action="<?= base_url('operator/detail-guru/' . rawurlencode($guru['nip']) . '/delete-all') ?>"
+                                        method="post" class="m-0">
+                                        <?= csrf_field() ?>
+                                        <input type="hidden" name="_method" value="DELETE">
+                                        <button type="button" id="btnHapusSemua"
+                                            class="btn btn-outline-danger rounded-pill d-inline-flex align-items-center">
+                                            <i class="fa-solid fa-trash-can me-2"></i> Hapus Semua
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        <?php else: ?>
+                            <div class="card-body">
+                                <div class="card-body">
+                                    <?php
+                                    // Ambil jabatan dari DATA GURU (bukan session)
+                                    $srcJabatan = $gmEdit['jabatan'] ?? ($guru['jabatan'] ?? '');
+                                    // Normalisasi: trim spasi, rapikan spasi ganda, lowercase
+                                    $jabatan = strtolower(preg_replace('/\s+/', ' ', trim((string)$srcJabatan)));
+
+                                    // Daftar role yang TIDAK BOLEH melihat tombol "Tambah Guru"
+                                    // (Silakan sesuaikan: tambahkan 'guru' jika memang harus disembunyikan juga)
+                                    $blokir = [
+                                        'kepala sekolah',
+                                        'wakil kepala',
+                                        'operator',
+                                        'staff',
+                                        'staf',
+                                        'guru',          // ← aktifkan/biarkan jika GURU juga dilarang
+                                        'guru mapel',
+                                        'guru kelas'
+                                    ];
+
+                                    $terblokir = in_array($jabatan, $blokir, true);
+                                    ?>
+
+                                    <div class="empty-card text-center p-5">
+                                        <img
+                                            src="<?= base_url('assets/img/empty-box.png') ?>"
+                                            class="empty-illustration mb-3"
+                                            alt="Data kosong"
+                                            width="160" height="160"
+                                            loading="lazy">
+
+                                        <h5 class="mb-1">Belum ada data guru</h5>
+                                        <p class="text-muted mb-3">
+                                            Tambahkan data guru pertama Anda untuk mulai mengelola informasi.
+                                        </p>
+
+                                        <?php if (!$terblokir): ?>
+                                            <a href="<?= site_url('operator/guru/tambah') ?>" class="btn btn-primary">
+                                                <i class="fa fa-plus"></i> Tambah Guru
+                                            </a>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+
+                            </div>
+
+                        <?php endif; ?>
+
+                    </div>
+                </div>
             </div>
-        </div>
-    </div>
-</div>
+            <!-- /Form: Tambah Penugasan Mapel -->
+        </div><!-- /card-body -->
+    </div><!-- /card -->
+</div><!-- /container -->
 
 <script>
-    // btn submit
-    (function() {
-        const btnCopy = document.getElementById('btnCopyNisn');
-        const nisnEl = document.getElementById('nisnText');
-        const btnPrint = document.getElementById('btnPrint');
-
-        btnCopy?.addEventListener('click', async () => {
-            try {
-                const text = (nisnEl?.textContent || '').trim();
-                await navigator.clipboard.writeText(text);
-                btnCopy.innerHTML = '<i class="fa-solid fa-check me-1"></i> Disalin';
-                setTimeout(() => btnCopy.innerHTML = '<i class="fa-regular fa-copy me-1"></i> Salin', 1500);
-            } catch (e) {
-                alert('Gagal menyalin NISN.');
-            }
-        });
-
-        btnPrint?.addEventListener('click', () => window.print());
-    })();
-
     // Salin NIP
-    document.getElementById('btnCopyNip')?.addEventListener('click', function() {
+    document.getElementById('btnCopyNip')?.addEventListener('click', () => {
         const el = document.getElementById('nipText');
         if (!el) return;
-        const text = el.textContent.trim();
-        navigator.clipboard?.writeText(text).then(() => {
-            this.innerHTML = '<i class="fa-solid fa-check me-1"></i> Disalin';
-            setTimeout(() => this.innerHTML = '<i class="fa-regular fa-copy me-1"></i> Salin', 1500);
+        const txt = el.textContent.trim();
+        if (!txt) return;
+        navigator.clipboard?.writeText(txt).then(() => {
+            Swal.fire({
+                icon: 'success',
+                title: 'Disalin!',
+                text: 'NIP disalin ke clipboard',
+                timer: 1200,
+                showConfirmButton: false
+            });
         });
     });
+
+    // SweetAlert: Hapus semua
+    (function() {
+        const btn = document.getElementById('btnHapusSemua');
+        const form = document.getElementById('formHapusSemuaGuruMapel');
+        if (!btn || !form) return;
+
+        btn.addEventListener('click', async function() {
+            const res = await Swal.fire({
+                title: 'Hapus semua penugasan?',
+                text: 'Tindakan ini akan menghapus SEMUA penugasan mapel guru ini.',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'Ya, hapus',
+                cancelButtonText: 'Batal',
+                reverseButtons: true,
+                focusCancel: true
+            });
+            if (res.isConfirmed) {
+                Swal.fire({
+                    title: 'Memproses...',
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    didOpen: () => Swal.showLoading()
+                });
+                form.submit();
+            }
+        });
+    })();
+
+    // Overlay submit (untuk form edit)
+    (function() {
+        const form = document.getElementById('formEditGuruMapel');
+        if (!form) return;
+
+        // overlay
+        const overlay = document.createElement('div');
+        overlay.className = 'form-blocker d-none';
+        overlay.innerHTML = '<div class="d-inline-flex align-items-center gap-2"><span class="spinner-border" role="status" aria-hidden="true"></span><span>Loading…</span></div>';
+        form.classList.add('form-wrap-relative');
+        form.appendChild(overlay);
+
+        let submitting = false;
+        form.addEventListener('submit', function(e) {
+            if (submitting) {
+                e.preventDefault();
+                return;
+            }
+            submitting = true;
+            overlay.classList.remove('d-none');
+            form.setAttribute('aria-busy', 'true');
+            form.style.pointerEvents = 'none';
+        });
+    })();
+
+    // Tambah/Hapus baris kelas (dinamis)
+    (function() {
+        const wrap = document.getElementById('kelasContainer');
+        const tpl = document.getElementById('kelasRowTpl');
+        const add = document.getElementById('btnAddKelas');
+        if (!wrap || !tpl) return;
+
+        add?.addEventListener('click', () => {
+            const node = tpl.content.cloneNode(true);
+            wrap.appendChild(node);
+        });
+
+        wrap.addEventListener('click', (e) => {
+            if (e.target.classList.contains('btnRemoveKelas')) {
+                const row = e.target.closest('.kelas-row');
+                if (row) {
+                    const rows = wrap.querySelectorAll('.kelas-row');
+                    if (rows.length > 1) row.remove();
+                }
+            }
+        });
+    })();
 </script>
 
 <?= $this->endSection() ?>

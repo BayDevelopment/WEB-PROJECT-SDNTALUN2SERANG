@@ -10,6 +10,10 @@ class SiswaMigration extends Migration
     {
         $this->forge->addField([
             'id_siswa'    => ['type' => 'INT', 'unsigned' => true, 'auto_increment' => true],
+
+            // FK baru ke tb_kelas
+            'kelas_id'    => ['type' => 'INT', 'unsigned' => true, 'null' => true], // FK -> tb_kelas.id_kelas
+
             'user_id'     => ['type' => 'INT', 'unsigned' => true, 'null' => true], // FK -> tb_users.id_user
             'nisn'        => ['type' => 'VARCHAR', 'constraint' => 20, 'null' => true],
             'full_name'   => ['type' => 'VARCHAR', 'constraint' => 100],
@@ -27,8 +31,9 @@ class SiswaMigration extends Migration
         $this->forge->addKey('id_siswa', true);
         $this->forge->addKey('user_id', false, true); // UNIQUE (opsional)
         $this->forge->addKey('nisn', false, true);    // UNIQUE (opsional)
+        $this->forge->addKey('kelas_id');             // index utk FK (opsional)
 
-        // Beri nama constraint agar tidak bentrok
+        // FK → tb_users
         $this->forge->addForeignKey(
             'user_id',
             'tb_users',
@@ -36,6 +41,16 @@ class SiswaMigration extends Migration
             'SET NULL',
             'CASCADE',
             'fk_tb_siswa_user_id'
+        );
+
+        // FK → tb_kelas
+        $this->forge->addForeignKey(
+            'kelas_id',
+            'tb_kelas',
+            'id_kelas',
+            'SET NULL',
+            'CASCADE',
+            'fk_tb_siswa_kelas_id'
         );
 
         $this->forge->createTable('tb_siswa', true, [
