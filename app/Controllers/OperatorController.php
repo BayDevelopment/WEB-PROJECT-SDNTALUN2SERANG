@@ -50,9 +50,9 @@ class OperatorController extends BaseController
 
         $db = \Config\Database::connect();
 
-        // ===== Tahun Ajaran aktif / terbaru
+        // ===== Tahun Ajaran aktif / fallback terbaru
         $taAktif = $this->TahunAjaran
-            ->where('is_active', 'aktif')
+            ->where('is_active', 1)
             ->orderBy('tahun', 'DESC')->orderBy('semester', 'DESC')
             ->first();
         if (! $taAktif) {
@@ -63,21 +63,23 @@ class OperatorController extends BaseController
         $taId = (int)($taAktif['id_tahun_ajaran'] ?? 0);
         $data['ta_aktif'] = $taAktif;
 
-        // ===== Guru Aktif
+        // ===== Guru Aktif (distinct)
         $aktifSet = ['1', 'aktif', 'active', 'ya', 'true'];
         if ($taId > 0) {
-            $guruCount = (clone $this->GuruTahunanModel)
+            $guruCount = (int) (clone $this->GuruTahunanModel)
+                ->select('COUNT(DISTINCT guru_id) AS jml', false)
                 ->where('tahun_ajaran_id', $taId)
                 ->groupStart()->whereIn('status', $aktifSet)->orWhere('status', 1)->groupEnd()
-                ->countAllResults();
+                ->get()->getRow('jml');
         } else {
-            $guruCount = (clone $this->ModelGuru)
+            $guruCount = (int) (clone $this->ModelGuru)
+                ->select('COUNT(DISTINCT id_guru) AS jml', false)
                 ->groupStart()->whereIn('status', $aktifSet)->orWhere('status', 1)->groupEnd()
-                ->countAllResults();
+                ->get()->getRow('jml');
         }
-        $data['guruCount'] = (int)$guruCount;
+        $data['guruCount'] = $guruCount;
 
-        // ===== Siswa aktif per kelas (tb_siswa JOIN tb_users)
+        // ===== Siswa aktif per kelas
         $rowsPerKelas = $db->table('tb_siswa s')
             ->select('s.kelas_id, k.tingkat, k.nama_kelas, COUNT(*) AS jml')
             ->join('tb_users u', 'u.id_user = s.user_id', 'inner')
@@ -122,7 +124,7 @@ class OperatorController extends BaseController
         $data['kelasTerpadatJumlah'] = (int)$kelasTerpadatJumlah;
         $data['kelasTerpadatNama']   = $kelasTerpadatNama;
 
-        // ===== Distribusi Mapel (tb_mapel)
+        // ===== Distribusi Mapel (contoh sederhana)
         $rowsMapel = $db->table('tb_mapel')
             ->select('nama, COUNT(*) AS jml', false)
             ->groupBy('nama')
@@ -144,14 +146,16 @@ class OperatorController extends BaseController
 
         // ===== Nilai Tertinggi (TA aktif)
         $topNilai = 0;
-        $topNama = '—';
+        $topNama  = '—';
         $topKelas = null;
+
         if ($taId > 0) {
             try {
                 $rowTop = $db->table('tb_nilai_siswa ns')
                     ->select('ns.skor, ns.siswa_id, s.full_name as siswa_nama, ns.tanggal')
                     ->join('tb_siswa s', 's.id_siswa = ns.siswa_id', 'left')
                     ->where('ns.tahun_ajaran_id', $taId)
+                    ->where('ns.skor IS NOT NULL', null, false)
                     ->orderBy('ns.skor', 'DESC')
                     ->orderBy('ns.tanggal', 'DESC')
                     ->limit(1)
@@ -180,9 +184,6 @@ class OperatorController extends BaseController
 
         return view('pages/operator/dashboard_operator', $data);
     }
-
-
-
 
 
     public function Data_siswa()
@@ -731,13 +732,12 @@ class OperatorController extends BaseController
             'validation' => \Config\Services::validation()
         ];
 
-        return view('pages/guru/profile', $data);
+        return view('pages/operator/profile', $data);
     }
 
     // EDIT PROFILE
     public function aksi_update_profile()
     {
-
         $session = session();
         $uid     = (int) $session->get('id_user');
 
@@ -746,20 +746,25 @@ class OperatorController extends BaseController
             return redirect()->back()->with('sweet_error', 'User tidak ditemukan.');
         }
 
-        // validasi (NOTE: sesuaikan "user_id" jika PK kamu berbeda)
+        // --- Ambil input mentah (untuk validasi) ---
+        $usernameIn = (string) $this->request->getPost('username');
+        $emailIn    = (string) $this->request->getPost('email');
+
+        // --- RULES: username tanpa spasi, hanya A-Z a-z 0-9 . _ (sejalan dgn contohmu) ---
         $rules = [
             'username' => [
                 'label'  => 'Username',
-                'rules'  => "required|min_length[4]|max_length[24]|alpha_numeric_punct|is_unique[tb_users.username,id_user,{$uid}]",
+                // no space → regex: hanya huruf/angka/titik/underscore
+                'rules'  => "required|min_length[4]|max_length[24]|regex_match[/^[A-Za-z0-9._]+$/]"
+                    . "|is_unique[tb_users.username,id_user,{$uid}]",
                 'errors' => [
-                    'required'            => '{field} wajib diisi.',
-                    'min_length'          => '{field} minimal {param} karakter.',
-                    'max_length'          => '{field} maksimal {param} karakter.',
-                    'alpha_numeric_punct' => '{field} hanya boleh huruf, angka, dan tanda baca standar (., _, -).',
-                    'is_unique'           => '{field} sudah digunakan.',
+                    'required'    => '{field} wajib diisi.',
+                    'min_length'  => '{field} minimal {param} karakter.',
+                    'max_length'  => '{field} maksimal {param} karakter.',
+                    'regex_match' => '{field} hanya boleh huruf, angka, titik, atau underscore (tanpa spasi).',
+                    'is_unique'   => '{field} sudah digunakan.',
                 ],
             ],
-
             'email' => [
                 'label'  => 'Email',
                 'rules'  => "required|valid_email|max_length[128]|is_unique[tb_users.email,id_user,{$uid}]",
@@ -770,7 +775,6 @@ class OperatorController extends BaseController
                     'is_unique'   => '{field} sudah terdaftar.',
                 ],
             ],
-
             'role' => [
                 'label'  => 'Role',
                 'rules'  => 'required|in_list[operator,guru,siswa]',
@@ -779,7 +783,6 @@ class OperatorController extends BaseController
                     'in_list'  => '{field} tidak valid. Pilih: operator, guru, atau siswa.',
                 ],
             ],
-
             'is_active' => [
                 'label'  => 'Status',
                 'rules'  => 'required|in_list[0,1]',
@@ -790,25 +793,24 @@ class OperatorController extends BaseController
             ],
         ];
 
-
         if (! $this->validate($rules)) {
             return redirect()->back()
                 ->withInput()
                 ->with('validation', $this->validator)
                 ->with('sweet_error', 'Periksa kembali input Anda.')
-                ->with('active_tab', 'account'); // opsional: buka tab akun otomatis
+                ->with('active_tab', 'account');
         }
 
-
-        // payload dasar
+        // --- Payload dasar (tanpa mengubah role/status untuk non-operator) ---
         $payload = [
-            'id_user'   => $uid, // PK untuk Model::save()
-            'username'  => trim((string) $this->request->getPost('username')),
-            'email'     => strtolower(trim((string) $this->request->getPost('email'))),
+            'id_user'    => $uid, // PK untuk Model::save()
+            // catatan: tidak auto-replace spasi→underscore agar user sadar aturan; sudah ditangkap regex di atas
+            'username'   => trim($usernameIn),
+            'email'      => strtolower(trim($emailIn)),
             'updated_at' => date('Y-m-d H:i:s'),
         ];
 
-        // hanya operator (atau admin) yang boleh ubah role & status
+        // hanya operator yang boleh ubah role & status
         $roleLogin = (string) $session->get('role');
         if (in_array($roleLogin, ['operator'], true)) {
             $payload['role']      = (string) $this->request->getPost('role');
@@ -821,14 +823,21 @@ class OperatorController extends BaseController
 
         try {
             $this->UserModel->save($payload);
+
+            // opsional: sinkronkan session bila field yang tampil di header berubah
+            $session->set('username', $payload['username']);
+            $session->set('email', $payload['email']);
         } catch (\Throwable $e) {
             log_message('error', 'Profile update failed: {msg}', ['msg' => $e->getMessage()]);
             return redirect()->back()->withInput()->with('sweet_error', 'Gagal menyimpan perubahan.');
         }
 
+        // arahkan sesuai kebutuhanmu
         return redirect()->to(base_url('operator/profile'))
-            ->with('sweet_success', 'Profil berhasil diperbarui.');
+            ->with('sweet_success', 'Profil berhasil diperbarui.')
+            ->with('active_tab', 'account');
     }
+
 
     public function aksi_update_password()
     {
@@ -1592,139 +1601,247 @@ class OperatorController extends BaseController
     {
         $nip = urldecode(trim($nipParam));
 
-        // 1) Lock guru
-        $guru = $this->ModelGuru->select('id_guru')->where('nip', $nip)->first();
+        // 1) Lock guru (+ ambil jabatan)
+        $guru = $this->ModelGuru
+            ->select('id_guru, jabatan')
+            ->where('nip', $nip)
+            ->first();
+
         if (!$guru) {
             return redirect()->to(base_url('operator/data-guru'))
                 ->with('sweet_error', 'Guru tidak ditemukan.');
         }
-        $idGuru = (int)$guru['id_guru'];
 
-        // 2) Validasi (id_kelas opsional → biar edit mapel tidak menghapus kelas secara tidak sengaja)
+        $idGuru   = (int)$guru['id_guru'];
+        $jabatan  = mb_strtolower(trim((string)($guru['jabatan'] ?? '')), 'UTF-8');
+        $isWali   = ($jabatan === 'wali kelas');
+        $isGuru   = ($jabatan === 'guru'); // silakan sesuaikan jika ada variasi lain
+
+        // 2) Validasi (Indonesia)
         $rules = [
-            'id_mapel'        => 'required|is_natural_no_zero',
-            'id_tahun_ajaran' => 'required|is_natural_no_zero',
-            'id_kelas'        => 'permit_empty',          // ← opsional
-            'id_kelas.*'      => 'is_natural_no_zero',
-            'jam_per_minggu'  => 'required|integer|greater_than_equal_to[0]|less_than_equal_to[40]',
-            'keterangan'      => 'permit_empty|max_length[190]',
-            // konteks lama (optional)
-            'old_id_mapel'        => 'permit_empty|is_natural',
-            'old_id_tahun_ajaran' => 'permit_empty|is_natural',
+            'id_mapel'            => 'required',               // array/atau single → kita normalkan
+            'id_mapel.*'          => 'is_natural_no_zero',
+            'id_tahun_ajaran'     => 'required|is_natural_no_zero',
+            'id_kelas'            => 'permit_empty',           // opsional
+            'id_kelas.*'          => 'is_natural_no_zero',
+            'jam_per_minggu'      => 'required|integer|greater_than_equal_to[0]|less_than_equal_to[40]',
+            'keterangan'          => 'permit_empty|max_length[190]',
         ];
-        if (!$this->validate($rules)) {
+        $messages = [
+            'id_mapel' => [
+                'required' => 'Silakan pilih minimal satu mata pelajaran.',
+            ],
+            'id_mapel.*' => [
+                'is_natural_no_zero' => 'Mata pelajaran tidak valid.',
+            ],
+            'id_tahun_ajaran' => [
+                'required' => 'Tahun ajaran wajib dipilih.',
+                'is_natural_no_zero' => 'Tahun ajaran tidak valid.',
+            ],
+            'id_kelas.*' => [
+                'is_natural_no_zero' => 'Data kelas tidak valid.',
+            ],
+            'jam_per_minggu' => [
+                'required' => 'Jam per minggu wajib diisi.',
+                'integer'  => 'Jam per minggu harus berupa bilangan bulat.',
+                'greater_than_equal_to' => 'Jam per minggu minimal 0.',
+                'less_than_equal_to'    => 'Jam per minggu maksimal 40.',
+            ],
+            'keterangan' => [
+                'max_length' => 'Keterangan maksimal 190 karakter.',
+            ],
+        ];
+        if (! $this->validate($rules, $messages)) {
             return redirect()->back()->withInput()
                 ->with('errors', $this->validator->getErrors())
                 ->with('sweet_error', 'Validasi gagal. Periksa kembali isian Anda.');
         }
 
-        // 3) Ambil input baru
-        $idMapel = (int)$this->request->getPost('id_mapel');
-        $idTa    = (int)$this->request->getPost('id_tahun_ajaran');
-        $jam     = (int)$this->request->getPost('jam_per_minggu');
-        $ket     = ($t = trim((string)$this->request->getPost('keterangan'))) !== '' ? $t : null;
+        // 3) Ambil input
+        $idTa   = (int)$this->request->getPost('id_tahun_ajaran');
+        $jam    = (int)$this->request->getPost('jam_per_minggu');
+        $ketRaw = trim((string)$this->request->getPost('keterangan'));
+        $ket    = ($ketRaw !== '') ? $ketRaw : null;
 
-        // Konteks lama (bisa 0 kalau tidak dikirim)
-        $oldMapel = (int)($this->request->getPost('old_id_mapel') ?? 0);
-        $oldTa    = (int)($this->request->getPost('old_id_tahun_ajaran') ?? 0);
+        // Normalisasi mapel jadi array unik-int
+        $mapelPost = $this->request->getPost('id_mapel');
+        if (!is_array($mapelPost)) $mapelPost = [$mapelPost];
+        $mapelIds = array_values(array_unique(array_filter(array_map(static function ($v) {
+            $n = (int)$v;
+            return $n > 0 ? $n : null;
+        }, $mapelPost))));
 
-        // 4) Validasi FK master sederhana
-        if (!$this->ModelMatpel->find($idMapel)) {
-            return redirect()->back()->withInput()->with('sweet_error', 'Mapel tidak valid.');
+        if (empty($mapelIds)) {
+            return redirect()->back()->withInput()
+                ->with('sweet_error', 'Silakan pilih minimal satu mata pelajaran.');
         }
-        if (!$this->TahunAjaran->find($idTa)) {
-            return redirect()->back()->withInput()->with('sweet_error', 'Tahun ajaran tidak valid.');
+
+        // Validasi mapel ada di master
+        $validMapelIds = $this->ModelMatpel->whereIn('id_mapel', $mapelIds)->findColumn('id_mapel');
+        $validMapelIds = array_map('intval', $validMapelIds ?? []);
+        if (count($validMapelIds) !== count($mapelIds)) {
+            return redirect()->back()->withInput()
+                ->with('sweet_error', 'Terdapat mata pelajaran yang tidak valid.');
+        }
+
+        // Kelas (opsional): jika dikirim, sinkronkan; jika tidak, jangan ubah kelas
+        $kelasPost = $this->request->getPost('id_kelas');
+        $kelasArr  = null;
+        if (!is_null($kelasPost)) {
+            if (!is_array($kelasPost)) $kelasPost = [$kelasPost];
+            $kelasArr = array_values(array_unique(array_filter(array_map(static function ($v) {
+                $n = (int)$v;
+                return $n > 0 ? $n : null;
+            }, $kelasPost))));
+
+            if (!empty($kelasArr)) {
+                $validKelas = $this->ModelKelas->whereIn('id_kelas', $kelasArr)->findColumn('id_kelas');
+                $validKelas = array_map('intval', $validKelas ?? []);
+                if (count($validKelas) !== count($kelasArr)) {
+                    return redirect()->back()->withInput()
+                        ->with('sweet_error', 'Terdapat kelas yang tidak valid.');
+                }
+            }
+        }
+
+        // ====== ATURAN JABATAN ======
+        // Wali Kelas: 1 kelas saja (wajib tepat satu), mapel boleh > 1
+        if ($isWali) {
+            // Jika user mengirim kelas → wajib tepat satu
+            if (is_array($kelasArr)) {
+                if (count($kelasArr) !== 1) {
+                    return redirect()->back()->withInput()
+                        ->with('sweet_error', 'Wali Kelas hanya boleh memilih satu kelas.');
+                }
+            } else {
+                // Kelas tidak dikirim → cek existing di TA ini. Jika kosong → wajib pilih satu kelas.
+                $distinctKelas = $this->ModelGuruMatpel->select('id_kelas')
+                    ->where([
+                        'id_guru'         => $idGuru,
+                        'id_tahun_ajaran' => $idTa,
+                    ])->where('id_kelas IS NOT NULL', null, false)
+                    ->groupBy('id_kelas')
+                    ->findColumn('id_kelas');
+
+                $distinctKelas = array_map('intval', $distinctKelas ?? []);
+                if (empty($distinctKelas)) {
+                    return redirect()->back()->withInput()
+                        ->with('sweet_error', 'Wali Kelas wajib memilih tepat satu kelas.');
+                }
+                if (count($distinctKelas) > 1) {
+                    return redirect()->back()->withInput()
+                        ->with('sweet_error', 'Data wali kelas ini memiliki lebih dari satu kelas pada tahun ajaran ini. Mohon rapikan data terlebih dahulu.');
+                }
+                // tetap biarkan $kelasArr = null (mode tidak mengubah kelas), hanya update jam/ket.
+            }
+        }
+
+        // Guru (biasa): 1 mapel saja, kelas boleh banyak
+        if ($isGuru) {
+            if (count($mapelIds) !== 1) {
+                return redirect()->back()->withInput()
+                    ->with('sweet_error', 'Guru hanya diperbolehkan memiliki satu mata pelajaran.');
+            }
         }
 
         $gmModel = $this->ModelGuruMatpel;
 
-        // 5) Transaksi
+        // 4) Transaksi
         $db = \Config\Database::connect();
         $db->transBegin();
 
         try {
-            // A) JIKA MAPEL BERUBAH → hapus semua baris lama (mapel sebelumnya) pada TA terkait
-            //    Contoh: sebelumnya MTK (2 kelas) → sekarang B.Indo (4 kelas) → hapus semua baris MTK (2 kelas)
-            if ($oldMapel > 0 && $oldMapel !== $idMapel) {
-                // Jika old TA tidak terkirim, asumsikan tetap pakai TA yang sama dengan input
-                $taTarget = $oldTa > 0 ? $oldTa : $idTa;
-
-                $gmModel->where([
-                    'id_guru'         => $idGuru,
-                    'id_mapel'        => $oldMapel,
-                    'id_tahun_ajaran' => $taTarget,
-                ])->delete(); // bila soft delete aktif -> set deleted_at
-            }
-
-            // B) Proses mapel BARU secara additive (tambah & update; tidak menghapus yang tidak dikirim)
-            // Ambil existing rows untuk kombinasi BARU
-            $existing = $gmModel->select('id_guru_mapel, id_kelas, jam_per_minggu, keterangan')
+            // Ambil semua penugasan EXISTING untuk guru + TA ini
+            $existing = $gmModel->select('id_guru_mapel, id_mapel, id_kelas')
                 ->where([
                     'id_guru'         => $idGuru,
-                    'id_mapel'        => $idMapel,
                     'id_tahun_ajaran' => $idTa,
                 ])->findAll();
 
-            $existByKelas = [];
+            // Index existing: per mapel → list kelas
+            $byMapel = [];
             foreach ($existing as $r) {
-                $existByKelas[(int)$r['id_kelas']] = $r;
-            }
-            $existingKelasIds = array_keys($existByKelas);
-
-            // Kelas dari form (opsional)
-            $kelasPost = $this->request->getPost('id_kelas');
-            $toInsert  = [];
-            $toKeep    = $existingKelasIds;
-
-            if (!is_null($kelasPost)) {
-                if (!is_array($kelasPost)) $kelasPost = [$kelasPost];
-
-                $kelasArr = array_values(array_unique(array_filter(array_map(static function ($v) {
-                    $n = (int)$v;
-                    return $n > 0 ? $n : null;
-                }, $kelasPost))));
-
-                if (!empty($kelasArr)) {
-                    // (opsional) validasi id_kelas yang dikirim
-                    $validKelasIds = $this->ModelKelas->whereIn('id_kelas', $kelasArr)->findColumn('id_kelas');
-                    $validKelasIds = array_map('intval', $validKelasIds ?? []);
-                    if (count($validKelasIds) !== count($kelasArr)) {
-                        $db->transRollback();
-                        return redirect()->back()->withInput()->with('sweet_error', 'Terdapat id_kelas yang tidak valid.');
-                    }
-                }
-
-                // ADDITIVE: hanya tambah yang baru, tidak menghapus yang tidak dikirim
-                $toInsert = array_diff($kelasArr, $existingKelasIds);
-                $toKeep   = array_unique(array_merge($existingKelasIds, array_intersect($kelasArr, $existingKelasIds)));
+                $mid = (int)$r['id_mapel'];
+                $kid = (int)$r['id_kelas'];
+                $byMapel[$mid][$kid] = (int)$r['id_guru_mapel'];
             }
 
-            // Insert kelas baru untuk mapel BARU
-            foreach ($toInsert as $idKelasNew) {
-                $gmModel->insert([
+            // --- 4A) Hapus semua MAPEL yang tidak lagi dipilih (untuk TA ini)
+            $existingMapels = array_keys($byMapel);
+            $mapelsToDelete = array_diff($existingMapels, $mapelIds);
+            if (!empty($mapelsToDelete)) {
+                $gmModel->where([
                     'id_guru'         => $idGuru,
-                    'id_mapel'        => $idMapel,
                     'id_tahun_ajaran' => $idTa,
-                    'id_kelas'        => (int)$idKelasNew,
-                    'jam_per_minggu'  => $jam,
-                    'keterangan'      => $ket,
-                ]);
+                ])->whereIn('id_mapel', $mapelsToDelete)->delete();
             }
 
-            // Update jam/keterangan untuk semua baris yang dipertahankan di mapel BARU
-            if (!empty($toKeep)) {
-                $rowsToKeep = $gmModel->select('id_guru_mapel')
-                    ->where([
-                        'id_guru'         => $idGuru,
-                        'id_mapel'        => $idMapel,
-                        'id_tahun_ajaran' => $idTa,
-                    ])->whereIn('id_kelas', $toKeep)->findColumn('id_guru_mapel');
+            // --- 4B) Untuk setiap MAPEL yang dipilih:
+            foreach ($mapelIds as $mid) {
+                $existingKelasForMapel = array_keys($byMapel[$mid] ?? []);
 
-                foreach ($rowsToKeep as $pk) {
-                    $gmModel->update((int)$pk, [
-                        'jam_per_minggu' => $jam,
-                        'keterangan'     => $ket,
-                    ]);
+                if (is_array($kelasArr)) {
+                    // MODE SINKRON KELAS (kelas dikirim)
+                    // (Jika Wali Kelas → kelasArr validasinya sudah dipastikan 1 item)
+                    $desired = $kelasArr;
+
+                    // Insert yang belum ada
+                    $toInsert = array_diff($desired, $existingKelasForMapel);
+                    foreach ($toInsert as $kid) {
+                        $gmModel->insert([
+                            'id_guru'         => $idGuru,
+                            'id_mapel'        => $mid,
+                            'id_tahun_ajaran' => $idTa,
+                            'id_kelas'        => (int)$kid,
+                            'jam_per_minggu'  => $jam,
+                            'keterangan'      => $ket,
+                        ]);
+                    }
+
+                    // Update jam/ket untuk yang dipertahankan
+                    $toKeep = array_intersect($existingKelasForMapel, $desired);
+                    if (!empty($toKeep)) {
+                        $ids = [];
+                        foreach ($toKeep as $kid) {
+                            $ids[] = (int)($byMapel[$mid][$kid] ?? 0);
+                        }
+                        foreach ($ids as $pk) {
+                            if ($pk > 0) {
+                                $gmModel->update($pk, [
+                                    'jam_per_minggu' => $jam,
+                                    'keterangan'     => $ket,
+                                ]);
+                            }
+                        }
+                    }
+
+                    // Hapus yang tidak dipilih lagi
+                    $toDelete = array_diff($existingKelasForMapel, $desired);
+                    if (!empty($toDelete)) {
+                        $gmModel->where([
+                            'id_guru'         => $idGuru,
+                            'id_mapel'        => $mid,
+                            'id_tahun_ajaran' => $idTa,
+                        ])->whereIn('id_kelas', $toDelete)->delete();
+                    }
+                } else {
+                    // MODE TANPA PERUBAHAN KELAS (kelas TIDAK dikirim)
+                    // → hanya update jam/ket untuk semua baris mapel ini
+                    if (!empty($existingKelasForMapel)) {
+                        $ids = [];
+                        foreach ($existingKelasForMapel as $kid) {
+                            $ids[] = (int)($byMapel[$mid][$kid] ?? 0);
+                        }
+                        foreach ($ids as $pk) {
+                            if ($pk > 0) {
+                                $gmModel->update($pk, [
+                                    'jam_per_minggu' => $jam,
+                                    'keterangan'     => $ket,
+                                ]);
+                            }
+                        }
+                    }
+                    // tidak ada insert/delete kelas pada cabang ini
                 }
             }
 
@@ -1736,8 +1853,9 @@ class OperatorController extends BaseController
         }
 
         return redirect()->to(base_url('operator/data-guru'))
-            ->with('sweet_success', 'Penugasan berhasil diperbarui. Mapel lama (jika ada) telah dihapus.');
+            ->with('sweet_success', 'Penugasan berhasil diperbarui.');
     }
+
 
     public function delete_data_guru($id = null)
     {
@@ -1908,12 +2026,14 @@ class OperatorController extends BaseController
         // ---------- RULES ----------
         $rules = [
             'username' => [
-                'rules'  => 'required|min_length[3]|max_length[50]|is_unique[tb_users.username]',
+                // Tanpa spasi, hanya [A-Za-z0-9._], 4–24 karakter, unik
+                'rules'  => 'required|min_length[4]|max_length[24]|regex_match[/^[A-Za-z0-9._]+$/]|is_unique[tb_users.username]',
                 'errors' => [
-                    'required'   => 'Username wajib diisi.',
-                    'min_length' => 'Username minimal 3 karakter.',
-                    'max_length' => 'Username maksimal 50 karakter.',
-                    'is_unique'  => 'Username sudah terdaftar, silakan gunakan yang lain.'
+                    'required'    => 'Username wajib diisi.',
+                    'min_length'  => 'Username minimal 4 karakter.',
+                    'max_length'  => 'Username maksimal 24 karakter.',
+                    'regex_match' => 'Username hanya boleh huruf, angka, titik (.) dan underscore (_), tanpa spasi.',
+                    'is_unique'   => 'Username sudah terdaftar, silakan gunakan yang lain.'
                 ]
             ],
             'password' => [
@@ -1947,7 +2067,6 @@ class OperatorController extends BaseController
             ],
         ];
 
-
         if (! $this->validate($rules)) {
             session()->setFlashdata('sweet_error', 'Validasi gagal. Periksa kembali isian Anda.');
             return redirect()->back()->withInput()
@@ -1960,6 +2079,13 @@ class OperatorController extends BaseController
         $email     = trim((string) $req->getPost('email'));
         $role      = (string) $req->getPost('role');
         $isActive  = (int) $req->getPost('is_active');
+
+        // ---------- (Guard tambahan) ----------
+        // Jika ingin ekstra aman (mis. mencegah bypass), cek lagi di server:
+        if (!preg_match('/^[A-Za-z0-9._]+$/', $username)) {
+            session()->setFlashdata('sweet_error', 'Username hanya boleh huruf, angka, titik (.) dan underscore (_), tanpa spasi.');
+            return redirect()->back()->withInput();
+        }
 
         // ---------- HASH PASSWORD ----------
         $passwordHash = password_hash($password, PASSWORD_ARGON2ID);
@@ -1983,6 +2109,7 @@ class OperatorController extends BaseController
         session()->setFlashdata('sweet_success', 'User baru berhasil ditambahkan.');
         return redirect()->to(base_url('operator/data-user'));
     }
+
     public function page_edit_user(string $idUserRaw)
     {
         // id_user numerik; jangan pakai nip lagi
@@ -2849,25 +2976,39 @@ class OperatorController extends BaseController
         $gmModel    = new \App\Models\GuruMatpel();       // tb_guru_mapel
 
         // --- Dropdown dasar
-        $guruList  = $guruModel->select('id_guru, nama_lengkap, nip')->orderBy('nama_lengkap', 'ASC')->findAll();
-        $tahunList = $taModel->select('id_tahun_ajaran, tahun, semester, is_active')->orderBy('is_active', 'DESC')->orderBy('tahun', 'DESC')->findAll();
-        $kelasList = $kelasModel->select('id_kelas, nama_kelas, tingkat, jurusan')->orderBy('tingkat', 'ASC')->orderBy('nama_kelas', 'ASC')->findAll();
+        $guruList = $guruModel->select('id_guru, nama_lengkap, nip')
+            ->orderBy('nama_lengkap', 'ASC')->findAll();
 
-        // --- TA aktif
+        // HANYA tahun ajaran AKTIF
+        $tahunList = $taModel->select('id_tahun_ajaran, tahun, semester, is_active')
+            ->where('is_active', 1)
+            ->orderBy('tahun', 'DESC')
+            ->orderBy('semester', 'ASC')
+            ->findAll();
+
+        // Kelas (tetap semua; nanti bisa dipersempit kalau wali kelas)
+        $kelasList = $kelasModel->select('id_kelas, nama_kelas, tingkat, jurusan')
+            ->orderBy('tingkat', 'ASC')
+            ->orderBy('nama_kelas', 'ASC')
+            ->findAll();
+
+        // --- Ambil ID TA aktif (jika ada)
         $idTaAktif = null;
-        foreach ($tahunList as $t) {
-            if ((int)($t['is_active'] ?? 0) === 1) {
-                $idTaAktif = (int)$t['id_tahun_ajaran'];
-                break;
-            }
+        if (!empty($tahunList)) {
+            // karena sudah difilter aktif, cukup ambil yang pertama
+            $idTaAktif = (int)($tahunList[0]['id_tahun_ajaran'] ?? 0) ?: null;
         }
 
         // --- Preselect & guard bila NIP diberikan
-        $d_row  = [];
-        $idGuru = null;
+        $d_row     = [];
+        $idGuru    = null;
+        $isWali    = false;
+        $lockedKls = null;
 
         if (!empty($nipGuru)) {
-            $guru = $guruModel->select('id_guru, jabatan, nama_lengkap, nip')->where('nip', (string)$nipGuru)->first();
+            $guru = $guruModel->select('id_guru, jabatan, nama_lengkap, nip')
+                ->where('nip', (string)$nipGuru)->first();
+
             if (!$guru) {
                 session()->setFlashdata('sweet_error', 'Guru dengan NIP ' . esc($nipGuru) . ' tidak ditemukan.');
                 return redirect()->to(base_url('operator/data-guru'));
@@ -2875,10 +3016,10 @@ class OperatorController extends BaseController
 
             $idGuru = (int)$guru['id_guru'];
 
-            // GUARD: blokir berdasarkan jabatan (case-insensitive)
+            // Blokir jabatan tertentu (opsional)
             $blokir = in_array(
                 mb_strtolower(trim((string)($guru['jabatan'] ?? '')), 'UTF-8'),
-                ['kepala sekolah', 'wakil kepala', 'operator', 'staff'],
+                ['kepala sekolah', 'wakil kepala', 'operator', 'staff', 'staf'],
                 true
             );
             if ($blokir) {
@@ -2886,39 +3027,53 @@ class OperatorController extends BaseController
                 return redirect()->to(base_url('operator/data-guru'));
             }
 
-            // GUARD: kalau sudah punya penugasan pada TA aktif, tolak (opsional)
-            if ($idTaAktif) {
-                $sudahAda = $gmModel->where([
-                    'id_guru'         => $idGuru,
-                    'id_tahun_ajaran' => $idTaAktif,
-                ])->countAllResults(true) > 0;
+            // Aturan wali kelas (boleh 1 kelas saja di TA aktif)
+            $isWali = (mb_strtolower(trim((string)($guru['jabatan'] ?? '')), 'UTF-8') === 'wali kelas');
 
-                if ($sudahAda) {
-                    session()->setFlashdata('sweet_error', 'Guru ini sudah memiliki penugasan pada Tahun Ajaran aktif.');
-                    return redirect()->to(base_url('operator/data-guru'));
+            if ($isWali && $idTaAktif) {
+                // cek apakah wali sudah punya kelas di TA aktif
+                $kelasAssigned = $gmModel->select('id_kelas')
+                    ->where('id_guru', $idGuru)
+                    ->where('id_tahun_ajaran', $idTaAktif)
+                    ->where('id_kelas IS NOT NULL', null, false)
+                    ->groupBy('id_kelas')
+                    ->get()->getResultArray();
+
+                if (!empty($kelasAssigned)) {
+                    // kunci ke kelas yang sudah ada
+                    $lockedKls = (int)$kelasAssigned[0]['id_kelas'];
+
+                    // batasi dropdown kelas
+                    $kelasList = $kelasModel->select('id_kelas, nama_kelas, tingkat, jurusan')
+                        ->where('id_kelas', $lockedKls)->findAll();
+
+                    $d_row['id_kelas']   = (string)$lockedKls;
+                    $d_row['lock_kelas'] = true;
+                } else {
+                    $d_row['lock_kelas'] = false; // boleh pilih satu (validasi saat simpan)
                 }
             }
 
             // Preselect form
             $d_row['id_guru'] = (string)$idGuru;
-            if ($idTaAktif) $d_row['id_tahun_ajaran'] = (string)$idTaAktif;
+            if ($idTaAktif) {
+                $d_row['id_tahun_ajaran'] = (string)$idTaAktif;
+            }
         }
 
-        // --- Filter mapel: hanya aktif & belum dimiliki guru (di TA aktif jika ada $idGuru)
-        if ($idGuru) {
-            $on = 'gm.id_mapel = tb_mapel.id_mapel AND gm.id_guru = ' . (int)$idGuru;
-            if ($idTaAktif) $on .= ' AND gm.id_tahun_ajaran = ' . (int)$idTaAktif;
-            // Jika soft deletes di tb_guru_mapel: $on .= ' AND gm.deleted_at IS NULL';
-
+        // --- Filter mapel: hanya aktif & (kalau id_guru ada) belum dimiliki di TA aktif
+        if ($idGuru && $idTaAktif) {
+            $on = 'gm.id_mapel = tb_mapel.id_mapel AND gm.id_guru = ' . (int)$idGuru .
+                ' AND gm.id_tahun_ajaran = ' . (int)$idTaAktif;
             $mapelList = $mapelModel
                 ->select('tb_mapel.id_mapel, tb_mapel.nama, tb_mapel.kode')
                 ->join('tb_guru_mapel gm', $on, 'left')
-                ->where('gm.id_mapel', null)     // belum dimiliki guru ini (pada TA aktif bila diset)
-                ->where('tb_mapel.is_active', 1) // hanya mapel aktif
+                ->where('gm.id_mapel', null)
+                ->where('tb_mapel.is_active', 1)
                 ->orderBy('tb_mapel.nama', 'ASC')
                 ->findAll();
         } else {
-            // Tanpa idGuru → tampilkan mapel aktif (tanpa filter penugasan)
+            // tanpa id_guru atau tanpa TA aktif → hanya tampilkan mapel aktif
             $mapelList = $mapelModel
                 ->select('id_mapel, nama, kode')
                 ->where('is_active', 1)
@@ -2928,63 +3083,91 @@ class OperatorController extends BaseController
 
         // --- Kirim ke view
         return view('pages/operator/guru_mapel', [
-            'title'      => 'Tambah Guru Mapel | SDN Talun 2 Kota Serang',
-            'sub_judul'  => 'Tambah Guru Mapel',
-            'nav_link'   => 'Tambah Guru Mapel',
-            'guruList'   => $guruList,
-            'mapelList'  => $mapelList,
-            'tahunList'  => $tahunList,
-            'kelasList'  => $kelasList,
-            'd_row'      => $d_row,
-            'idTaAktif'  => $idTaAktif,
+            'title'       => 'Tambah Guru Mapel | SDN Talun 2 Kota Serang',
+            'sub_judul'   => 'Tambah Guru Mapel',
+            'nav_link'    => 'Tambah Guru Mapel',
+            'guruList'    => $guruList,
+            'mapelList'   => $mapelList,
+            'tahunList'   => $tahunList, // hanya TA aktif
+            'kelasList'   => $kelasList,
+            'd_row'       => $d_row,
+            'idTaAktif'   => $idTaAktif,
+            'isWaliKelas' => $isWali,
         ]);
     }
+
 
 
     public function aksi_tambah_guru_mapel()
     {
         $req = $this->request;
 
-        // --- Validasi dasar
+        // --- Validasi dasar (field tunggal) + pesan Indonesia
         $rules = [
             'id_guru'         => 'required|is_natural_no_zero',
-            'id_mapel'        => 'required|is_natural_no_zero',
             'id_tahun_ajaran' => 'required|is_natural_no_zero',
             'jam_per_minggu'  => 'required|is_natural', // boleh 0
-            'id_kelas'        => 'required'             // array wajib ada
+            // id_mapel & id_kelas divalidasi manual karena berbentuk array
         ];
-        if (! $this->validate($rules)) {
+        $messages = [
+            'id_guru' => [
+                'required'            => 'Guru wajib dipilih.',
+                'is_natural_no_zero'  => 'Guru tidak valid.',
+            ],
+            'id_tahun_ajaran' => [
+                'required'            => 'Tahun ajaran wajib dipilih.',
+                'is_natural_no_zero'  => 'Tahun ajaran tidak valid.',
+            ],
+            'jam_per_minggu' => [
+                'required'   => 'Jam per minggu wajib diisi.',
+                'is_natural' => 'Jam per minggu harus berupa angka 0 atau lebih.',
+            ],
+        ];
+        if (! $this->validate($rules, $messages)) {
             return redirect()->back()->withInput()->with('errors', $this->validator->getErrors());
         }
 
-        // --- Ambil data
-        $idGuru    = (int)$req->getPost('id_guru');
-        $idMapel   = (int)$req->getPost('id_mapel');
-        $idTa      = (int)$req->getPost('id_tahun_ajaran');
-        $jam       = (int)$req->getPost('jam_per_minggu');
-        $ket       = (string)$req->getPost('keterangan');
+        // --- Ambil data POST
+        $idGuru  = (int) $req->getPost('id_guru');
+        $idTa    = (int) $req->getPost('id_tahun_ajaran');
+        $jam     = (int) $req->getPost('jam_per_minggu');
+        $ket     = (string) $req->getPost('keterangan');
 
-        // id_kelas sebagai array
-        $kelasArr  = $req->getPost('id_kelas'); // bisa string atau array
+        // Ambil array mapel & kelas (multi)
+        $mapelArr = $req->getPost('id_mapel'); // di form: name="id_mapel[]"
+        $kelasArr = $req->getPost('id_kelas'); // di form: name="id_kelas[]" (atau single -> string)
 
-        if (!is_array($kelasArr)) {
-            // jika user hanya memilih satu kelas, beberapa browser bisa kirim string → ubah ke array
-            $kelasArr = [$kelasArr];
+        // Pastikan array
+        if (!is_array($mapelArr)) $mapelArr = ($mapelArr !== null && $mapelArr !== '') ? [$mapelArr] : [];
+        if (!is_array($kelasArr)) $kelasArr = ($kelasArr !== null && $kelasArr !== '') ? [$kelasArr] : [];
+
+        // Normalisasi -> integer > 0 + dedup
+        $normIntArray = static function (array $arr): array {
+            $arr = array_map(static function ($v) {
+                return (int)$v;
+            }, $arr);
+            $arr = array_filter($arr, static fn($v) => $v > 0);
+            $arr = array_values(array_unique($arr));
+            return $arr;
+        };
+
+        $mapelIds = $normIntArray($mapelArr);
+        $kelasIds = $normIntArray($kelasArr);
+
+        // Validasi manual (bahasa Indonesia)
+        $manualErrors = [];
+        if (empty($mapelIds)) $manualErrors['id_mapel'] = 'Minimal pilih satu mata pelajaran.';
+        if (empty($kelasIds)) $manualErrors['id_kelas'] = 'Minimal pilih satu kelas.';
+
+        if (!empty($manualErrors)) {
+            return redirect()->back()->withInput()->with('errors', $manualErrors);
         }
 
-        // --- Normalisasi: integer valid & dedup
-        $kelasIds = array_values(array_unique(array_filter(array_map(function ($v) {
-            $n = (int)$v;
-            return $n > 0 ? $n : null;
-        }, $kelasArr))));
-
-        if (empty($kelasIds)) {
-            return redirect()->back()->withInput()->with('errors', ['id_kelas' => 'Minimal pilih satu kelas.']);
-        }
-
-        // --- Optional: guard berdasarkan jabatan guru (ambil dari tb_guru)
+        // --- Cek jabatan guru (logika Wali Kelas)
         $guruModel = new \App\Models\ModelGuru();
-        $guru      = $guruModel->select('id_guru, jabatan')->where('id_guru', $idGuru)->first();
+        $guru = $guruModel->select('id_guru, jabatan, nip, nama_lengkap')
+            ->where('id_guru', $idGuru)
+            ->first();
 
         if (!$guru) {
             session()->setFlashdata('sweet_error', 'Guru tidak ditemukan.');
@@ -2992,45 +3175,56 @@ class OperatorController extends BaseController
         }
 
         $jabatan = mb_strtolower(trim((string)($guru['jabatan'] ?? '')), 'UTF-8');
-        $blokir  = ['kepala sekolah', 'wakil kepala', 'operator', 'staff', 'staf'];
+
+        // Blokir jabatan tertentu (opsional)
+        $blokir = ['kepala sekolah', 'wakil kepala', 'operator', 'staff', 'staf'];
         if (in_array($jabatan, $blokir, true)) {
             session()->setFlashdata('sweet_error', 'Jabatan ini tidak diperbolehkan memiliki penugasan mapel.');
             return redirect()->to(base_url('operator/data-guru'));
         }
 
-        // --- Model gm
+        // *** Aturan Wali Kelas: hanya boleh 1 kelas, tapi mapel boleh banyak
+        if ($jabatan === 'wali kelas' && count($kelasIds) > 1) {
+            return redirect()->back()->withInput()->with('errors', [
+                'id_kelas' => 'Wali Kelas hanya diperbolehkan memilih satu kelas.',
+            ]);
+        }
+
+        // --- Model penugasan
         $gmModel = new \App\Models\GuruMatpel();
 
-        // --- Transaksi
+        // --- Transaksi Insert (loop: setiap MAPEL x setiap KELAS)
         $db = \Config\Database::connect();
         $db->transException(true)->transStart();
 
         $inserted = 0;
         $skipped  = 0;
 
-        foreach ($kelasIds as $idKelas) {
-            // Cek apakah kombinasi sudah ada
-            $exists = $gmModel->where([
-                'id_guru'         => $idGuru,
-                'id_mapel'        => $idMapel,
-                'id_tahun_ajaran' => $idTa,
-                'id_kelas'        => $idKelas,
-            ])->countAllResults(true) > 0;
+        foreach ($mapelIds as $idMapel) {
+            foreach ($kelasIds as $idKelas) {
+                // Cek duplikat kombinasi
+                $exists = $gmModel->where([
+                    'id_guru'         => $idGuru,
+                    'id_mapel'        => $idMapel,
+                    'id_tahun_ajaran' => $idTa,
+                    'id_kelas'        => $idKelas,
+                ])->countAllResults(true) > 0;
 
-            if ($exists) {
-                $skipped++;
-                continue;
+                if ($exists) {
+                    $skipped++;
+                    continue;
+                }
+
+                $gmModel->insert([
+                    'id_guru'         => $idGuru,
+                    'id_mapel'        => $idMapel,
+                    'id_tahun_ajaran' => $idTa,
+                    'id_kelas'        => $idKelas,
+                    'jam_per_minggu'  => $jam,
+                    'keterangan'      => $ket,
+                ]);
+                $inserted++;
             }
-
-            $gmModel->insert([
-                'id_guru'         => $idGuru,
-                'id_mapel'        => $idMapel,
-                'id_tahun_ajaran' => $idTa,
-                'id_kelas'        => $idKelas,
-                'jam_per_minggu'  => $jam,
-                'keterangan'      => $ket,
-            ]);
-            $inserted++;
         }
 
         $db->transComplete();
@@ -3038,15 +3232,15 @@ class OperatorController extends BaseController
         // --- Feedback
         if ($inserted > 0) {
             $msg = "Berhasil menambahkan {$inserted} penugasan.";
-            if ($skipped > 0) $msg .= " ({$skipped} duplikat dilewati)";
+            if ($skipped > 0) $msg .= " ({$skipped} data duplikat dilewati)";
             session()->setFlashdata('sweet_success', $msg);
         } else {
             session()->setFlashdata('sweet_warning', "Tidak ada penugasan baru. {$skipped} data duplikat dilewati.");
         }
 
-        // Arahkan balik ke detail guru (atau halaman lain yang kamu mau)
         return redirect()->to(base_url('operator/data-guru'));
     }
+
     public function aksi_update_guru_mapel($idGuruMapel = null)
     {
 
@@ -3467,44 +3661,70 @@ class OperatorController extends BaseController
     }
     public function aksi_delete_kelas($id = null)
     {
-        // Cek data kelas berdasarkan ID
+        // Pastikan kelas ada
         $row = $this->ModelKelas->find($id);
         if (!$row) {
-            return redirect()->to(site_url('operator/kelas'))->with('sweet_error', 'Data kelas tidak ditemukan.');
-        }
-
-        try {
-            // Hapus data
-            $this->ModelKelas->delete($id);
-        } catch (\Throwable $e) {
             return redirect()->to(site_url('operator/kelas'))
-                ->with('sweet_error', 'Gagal menghapus data kelas: ' . $e->getMessage());
+                ->with('sweet_error', 'Data kelas tidak ditemukan.');
         }
 
-        return redirect()->to(site_url('operator/kelas'))
-            ->with('sweet_success', 'Kelas berhasil dihapus.');
+        $db = \Config\Database::connect();
+
+        // Cek relasi (ganti nama kolom kalau beda)
+        $jmlSiswa     = (int) $db->table('tb_siswa')->where('kelas_id', $id)->countAllResults();
+        $jmlGuruMapel = (int) $db->table('tb_guru_mapel')->where('id_kelas', $id)->countAllResults();
+
+        if ($jmlSiswa > 0 || $jmlGuruMapel > 0) {
+            $parts = [];
+            if ($jmlSiswa > 0)     $parts[] = "- Siswa terdaftar: {$jmlSiswa}";
+            if ($jmlGuruMapel > 0) $parts[] = "- Guru/Mapel terkait: {$jmlGuruMapel}";
+
+            $msg = "Kelas tidak dapat dihapus karena masih digunakan:\n"
+                . implode("\n", $parts)
+                . "\n\nSilakan pindahkan siswa/guru mapel dari kelas ini terlebih dahulu.";
+
+            return redirect()->to(site_url('operator/kelas'))
+                ->with('sweet_error', nl2br($msg));
+        }
+
+        // Aman dihapus
+        try {
+            $this->ModelKelas->delete($id);
+            return redirect()->to(site_url('operator/kelas'))
+                ->with('sweet_success', 'Kelas berhasil dihapus.');
+        } catch (\Throwable $e) {
+            // fallback jika masih ada FK lain yang luput
+            return redirect()->to(site_url('operator/kelas'))
+                ->with('sweet_error', 'Gagal menghapus: kelas masih direferensikan atau terjadi kesalahan. Detail: ' . $e->getMessage());
+        }
     }
+
 
 
     // Lapiran Data Siswa
     public function page_laporan_d_siswa()
     {
-        $req  = $this->request;
-        $q    = trim((string)($req->getGet('q') ?? ''));              // cari nama/NISN
-        $idTA = trim((string)($req->getGet('tahunajaran') ?? ''));    // id_tahun_ajaran (optional)
+        $req        = $this->request;
+        $q          = trim((string)($req->getGet('q') ?? ''));               // cari nama/NISN
+        $idTA       = trim((string)($req->getGet('tahunajaran') ?? ''));     // id_tahun_ajaran (opsional)
+        $kategori   = strtoupper((string)($req->getGet('kategori') ?? ''));  // UTS/UAS (opsional)
+        $gender     = strtoupper(trim((string)($req->getGet('gender') ?? ''))); // 'L' / 'P' / ''
 
-        // Builder dari model "tahunan" (kolom: siswa_id, tahun_ajaran_id, status, tanggal_masuk, tanggal_keluar)
+        // List TA untuk dropdown
+        $listTA = $this->TahunAjaran
+            ->select('id_tahun_ajaran, tahun, semester, is_active')
+            ->orderBy('tahun', 'DESC')
+            ->orderBy('semester', 'ASC')
+            ->findAll();
+
+        // Query utama
         $builder = $this->SiswaTahunanModel
             ->select("
             id_siswa_tahun, siswa_id, tahun_ajaran_id, status, tanggal_masuk, tanggal_keluar,
-
             s.id_siswa, s.nisn, s.full_name, s.gender,
-
             u.username AS user_name, u.is_active AS user_active,
-
             ta.tahun AS tahun_ajaran, ta.semester AS semester, ta.is_active AS ta_active
         ", false)
-            // JOIN: gunakan nama kolom base table tanpa prefix agar tidak tergantung nama tabel dasar
             ->join('tb_siswa s', 's.id_siswa = siswa_id', 'left')
             ->join('tb_users u', 'u.id_user = s.user_id', 'left')
             ->join('tb_tahun_ajaran ta', 'ta.id_tahun_ajaran = tahun_ajaran_id', 'left');
@@ -3517,51 +3737,50 @@ class OperatorController extends BaseController
                 ->groupEnd();
         }
 
-        // Filter Tahun Ajaran (id)
+        // Filter Tahun Ajaran
         if ($idTA !== '' && ctype_digit($idTA)) {
             $builder->where('tahun_ajaran_id', (int)$idTA);
         }
 
-        $rows = $builder
-            ->orderBy('s.full_name', 'ASC')
-            ->findAll();
+        // Filter Gender (hanya jika L/P)
+        if ($gender === 'L' || $gender === 'P') {
+            $builder->where('s.gender', $gender);
+        }
 
-        // Ringkasan: berdasarkan user.is_active (1 / 0)
-        $SiswaAktif = 0;
-        $SiswaNonAktif = 0;
+        // (opsional) filter kategori nilai...
 
-        // (Opsional) ringkasan berdasarkan status di tabel tahunan
-        $EnrolAktif = 0;
-        $EnrolNonAktif = 0;
+        $rows = $builder->orderBy('s.full_name', 'ASC')->findAll();
 
+        // Ringkasan
+        $SiswaAktif = $SiswaNonAktif = $EnrolAktif = $EnrolNonAktif = 0;
         foreach ($rows as $r) {
-            $ua = (int)($r['user_active'] ?? 0);
-            if ($ua === 1) $SiswaAktif++;
-            else $SiswaNonAktif++;
-
+            ((int)($r['user_active'] ?? 0) === 1) ? $SiswaAktif++ : $SiswaNonAktif++;
             $st = strtolower((string)($r['status'] ?? ''));
-            $isEnrolActive = ($st === '1' || $st === 'aktif' || $st === 'active' || $st === 'ya' || $st === 'true');
-            if ($isEnrolActive) $EnrolAktif++;
-            else $EnrolNonAktif++;
+            in_array($st, ['1', 'aktif', 'active', 'ya', 'true'], true) ? $EnrolAktif++ : $EnrolNonAktif++;
         }
 
         return view('pages/operator/laporan_data_siswa', [
             'title'         => 'Laporan Data siswa | SDN Talun 2 Kota Serang',
             'sub_judul'     => 'Laporan Data Siswa/i',
             'nav_link'      => 'Laporan Data Siswa',
-            'd_siswa'       => $rows,          // berisi data tahunan + siswa + user + tahun ajaran
+            'd_siswa'       => $rows,
             'q'             => $q,
             'tahunajaran'   => $idTA,
-            'SiswaAktif'    => $SiswaAktif,        // ringkasan berdasarkan user.is_active
+            'kategori'      => $kategori,
+            'gender'        => $gender,     // ← KIRIM KE VIEW (buat selected option)
+            'listTA'        => $listTA,
+            'SiswaAktif'    => $SiswaAktif,
             'SiswaNonAktif' => $SiswaNonAktif,
-            'EnrolAktif'    => $EnrolAktif,        // ringkasan berdasarkan status (opsional digunakan di UI)
+            'EnrolAktif'    => $EnrolAktif,
             'EnrolNonAktif' => $EnrolNonAktif,
             'totalSiswa'    => count($rows),
         ]);
     }
+
+
     public function page_tambah_laporan_siswa(?string $param = null)
     {
-        $siswaModel = new \App\Models\SiswaModel();        // kolom: id_siswa (PK), nisn, nama_lengkap
+        $siswaModel = new \App\Models\SiswaModel();        // kolom: id_siswa, nisn, full_name
         $taModel    = new \App\Models\TahunAjaranModel();  // kolom: id_tahun_ajaran, tahun, semester, is_active
 
         $siswaTerpilih = null;
@@ -3570,7 +3789,7 @@ class OperatorController extends BaseController
         $param = isset($param) ? trim($param) : null;
 
         if (!empty($param)) {
-            // 1) Coba sebagai id_siswa (param numerik, termasuk "00123" tetap dianggap numerik oleh ctype_digit)
+            // 1) Coba sebagai id_siswa (numerik)
             if (ctype_digit($param)) {
                 $siswaTerpilih = $siswaModel
                     ->select('id_siswa, nisn, full_name')
@@ -3599,7 +3818,7 @@ class OperatorController extends BaseController
         }
 
         // Dropdown siswa:
-        // - Datang via NISN → kunci hanya 1 opsi (tidak bisa pilih siswa lain)
+        // - Jika datang via NISN → kunci hanya 1 opsi
         // - Selain itu → tampilkan semua siswa
         if ($isParamNisn && $siswaTerpilih) {
             $d_siswa = [$siswaTerpilih];
@@ -3610,21 +3829,22 @@ class OperatorController extends BaseController
                 ->findAll();
         }
 
-        // Tahun ajaran (pilih salah satu):
-        // a) Semua tahun ajaran
+        // Tahun ajaran: HANYA yang aktif
         $d_tahun = $taModel
             ->select('id_tahun_ajaran, tahun, semester, is_active')
+            ->where('is_active', 1)
             ->orderBy('tahun', 'DESC')
             ->orderBy('semester', 'ASC')
             ->findAll();
 
-        // b) (Opsional) Hanya yang aktif
-        // $d_tahun = $taModel
-        //     ->select('id_tahun_ajaran, tahun, semester, is_active')
-        //     ->where('is_active', 1)
-        //     ->orderBy('tahun', 'DESC')
-        //     ->orderBy('semester', 'ASC')
-        //     ->findAll();
+        // Fallback opsional: jika tidak ada yang aktif, tampilkan semua supaya form tetap bisa dipakai
+        if (empty($d_tahun)) {
+            $d_tahun = $taModel
+                ->select('id_tahun_ajaran, tahun, semester, is_active')
+                ->orderBy('tahun', 'DESC')
+                ->orderBy('semester', 'ASC')
+                ->findAll();
+        }
 
         $data = [
             'title'         => 'Tambah Data Siswa | SDN Talun 2 Kota Serang',
@@ -3634,7 +3854,7 @@ class OperatorController extends BaseController
             'd_tahun'       => $d_tahun,
             'siswaTerpilih' => $siswaTerpilih,
             'preselectId'   => (int) ($siswaTerpilih['id_siswa'] ?? 0),
-            // guard NISN untuk POST (dipakai verifikasi pasangan siswa_id × nisn_lock)
+            // guard NISN untuk POST (verifikasi pasangan siswa_id × nisn_lock)
             'nisn_lock'     => $isParamNisn && $siswaTerpilih ? (string) $siswaTerpilih['nisn'] : null,
             // opsional: memudahkan view mengunci dropdown
             'lock_dropdown' => $isParamNisn && $siswaTerpilih,
@@ -3865,61 +4085,165 @@ class OperatorController extends BaseController
 
     public function page_laporan_guru()
     {
-        $req  = $this->request;
-        $q    = trim((string)($req->getGet('q') ?? ''));              // pencarian nama/NIP
-        $idTA = trim((string)($req->getGet('tahunajaran') ?? ''));    // id_tahun_ajaran
-        $gender = trim((string)($req->getGet('gender') ?? ''));       // gender L/P
+        $req    = $this->request;
+        $q      = trim((string)($req->getGet('q') ?? ''));
+        $idTA   = trim((string)($req->getGet('tahunajaran') ?? ''));
+        $gender = trim((string)($req->getGet('gender') ?? ''));
 
-        // Ambil daftar tahun ajaran untuk filter dropdown
+        // Dropdown Tahun Ajaran
         $listTA = $this->TahunAjaran
             ->orderBy('tahun', 'DESC')
             ->orderBy('semester', 'DESC')
             ->findAll();
 
-        // Base query
-        $builder = $this->GuruTahunanModel
-            ->select("
-            id_guru_tahun, guru_id, tahun_ajaran_id, status, tanggal_masuk, tanggal_keluar,
-            g.id_guru, g.nip, g.nama_lengkap, g.jenis_kelamin, g.status_active AS guru_active,
-            u.username AS user_name, u.is_active AS user_active,
-            ta.tahun AS tahun_ajaran, ta.semester AS semester, ta.is_active AS ta_active
-        ", false)
-            ->join('tb_guru g', 'g.id_guru = guru_id', 'left')
-            ->join('tb_users u', 'u.id_user = g.user_id', 'left')
-            ->join('tb_tahun_ajaran ta', 'ta.id_tahun_ajaran = tahun_ajaran_id', 'left');
+        // Normalisasi tanggal dari gt (DATE/DATETIME -> NULL jika zero-date/empty)
+        $exprMasuk = "
+        NULLIF(
+            NULLIF(NULLIF(gt.tanggal_masuk, ''), '0000-00-00'),
+            '0000-00-00 00:00:00'
+        )
+    ";
+        $exprKeluar = "
+        NULLIF(
+            NULLIF(NULLIF(gt.tanggal_keluar, ''), '0000-00-00'),
+            '0000-00-00 00:00:00'
+        )
+    ";
 
-        // Filter pencarian
-        if ($q !== '') {
-            $builder->groupStart()
-                ->like('g.nama_lengkap', $q)
-                ->orLike('g.nip', $q)
-                ->groupEnd();
-        }
-
-        // Filter tahun ajaran
+        // === MODE A: Ada filter Tahun Ajaran -> tampil per-TA (tidak dedupe)
         if ($idTA !== '' && ctype_digit($idTA)) {
-            $builder->where('tahun_ajaran_id', (int) $idTA);
-        }
+            $builder = $this->GuruTahunanModel
+                ->select("
+                gt.id_guru_tahun,
+                gt.guru_id,
+                gt.tahun_ajaran_id,
+                gt.status,
 
-        // Filter gender
-        if (in_array($gender, ['L', 'P'])) {
-            $builder->where('g.jenis_kelamin', $gender);
-        }
+                DATE_FORMAT({$exprMasuk},  '%Y-%m-%d') AS tanggal_masuk_all,
+                DATE_FORMAT({$exprKeluar}, '%Y-%m-%d') AS tanggal_keluar_all,
 
-        // Ambil data guru
-        $rows = $builder
-            ->orderBy('g.nama_lengkap', 'ASC')
-            ->findAll();
+                gt.tanggal_masuk   AS t_masuk_gt,
+                gt.tanggal_keluar  AS t_keluar_gt,
+
+                g.id_guru,
+                g.nip,
+                g.nama_lengkap,
+                g.jenis_kelamin,
+                g.status_active AS guru_active,
+
+                u.username AS user_name,
+                u.is_active AS user_active,
+
+                ta.tahun    AS tahun_ajaran,
+                ta.semester AS semester,
+                ta.is_active AS ta_active
+            ", false)
+                ->from('tb_guru_tahun gt')
+                ->join('tb_guru g', 'g.id_guru = gt.guru_id', 'left')
+                ->join('tb_users u', 'u.id_user = g.user_id', 'left')
+                ->join('tb_tahun_ajaran ta', 'ta.id_tahun_ajaran = gt.tahun_ajaran_id', 'left')
+                ->where('gt.tahun_ajaran_id', (int)$idTA);
+
+            if ($q !== '') {
+                $builder->groupStart()
+                    ->like('g.nama_lengkap', $q)
+                    ->orLike('g.nip', $q)
+                    ->groupEnd();
+            }
+            if (in_array($gender, ['L', 'P'], true)) {
+                $builder->where('g.jenis_kelamin', $gender);
+            }
+
+            $rows = $builder
+                ->orderBy('g.nama_lengkap', 'ASC')
+                ->orderBy("{$exprMasuk} IS NULL", 'ASC', false)
+                ->orderBy($exprMasuk, 'ASC', false)
+                ->findAll();
+
+            // === MODE B: Tanpa filter Tahun Ajaran -> dedupe: ambil TA paling baru per guru
+        } else {
+            $db = \Config\Database::connect();
+
+            // Subquery: beri ranking per guru (TA paling baru = rn=1)
+            $sub = $db->table('tb_guru_tahun gt')
+                ->select("
+                gt.id_guru_tahun,
+                gt.guru_id,
+                gt.tahun_ajaran_id,
+                gt.status,
+                gt.tanggal_masuk,
+                gt.tanggal_keluar,
+                ta.tahun,
+                ta.semester,
+                ROW_NUMBER() OVER (
+                    PARTITION BY gt.guru_id
+                    ORDER BY ta.tahun DESC, ta.semester DESC
+                ) AS rn
+            ", false)
+                ->join('tb_tahun_ajaran ta', 'ta.id_tahun_ajaran = gt.tahun_ajaran_id', 'left');
+
+            $subSql = $sub->getCompiledSelect(false); // keep aliases as-is
+
+            // Bungkus subquery sebagai e (enrol_terbaru)
+            $builder = $db->table("({$subSql}) e")
+                ->select("
+                e.id_guru_tahun,
+                e.guru_id,
+                e.tahun_ajaran_id,
+                e.status,
+
+                DATE_FORMAT(
+                    NULLIF(NULLIF(NULLIF(e.tanggal_masuk, ''), '0000-00-00'), '0000-00-00 00:00:00'),
+                    '%Y-%m-%d'
+                ) AS tanggal_masuk_all,
+                DATE_FORMAT(
+                    NULLIF(NULLIF(NULLIF(e.tanggal_keluar, ''), '0000-00-00'), '0000-00-00 00:00:00'),
+                    '%Y-%m-%d'
+                ) AS tanggal_keluar_all,
+
+                e.tanggal_masuk  AS t_masuk_gt,
+                e.tanggal_keluar AS t_keluar_gt,
+
+                g.id_guru,
+                g.nip,
+                g.nama_lengkap,
+                g.jenis_kelamin,
+                g.status_active AS guru_active,
+
+                u.username AS user_name,
+                u.is_active AS user_active,
+
+                ta.tahun    AS tahun_ajaran,
+                ta.semester AS semester,
+                ta.is_active AS ta_active
+            ", false)
+                ->join('tb_guru g', 'g.id_guru = e.guru_id', 'left')
+                ->join('tb_users u', 'u.id_user = g.user_id', 'left')
+                ->join('tb_tahun_ajaran ta', 'ta.id_tahun_ajaran = e.tahun_ajaran_id', 'left')
+                ->where('e.rn', 1); // <-- ambil satu baris terbaru per guru
+
+            if ($q !== '') {
+                $builder->groupStart()
+                    ->like('g.nama_lengkap', $q)
+                    ->orLike('g.nip', $q)
+                    ->groupEnd();
+            }
+            if (in_array($gender, ['L', 'P'], true)) {
+                $builder->where('g.jenis_kelamin', $gender);
+            }
+
+            $rows = $builder
+                ->orderBy('g.nama_lengkap', 'ASC')
+                ->orderBy("tanggal_masuk_all IS NULL", 'ASC', false)
+                ->orderBy('tanggal_masuk_all', 'ASC', false)
+                ->get()->getResultArray();
+        }
 
         // Ringkasan
         $GuruAktif = $GuruNonAktif = $EnrolAktif = $EnrolNonAktif = 0;
-
         foreach ($rows as $r) {
-            // Status guru aktif (master guru)
             if ((int)($r['guru_active'] ?? 0) === 1) $GuruAktif++;
             else $GuruNonAktif++;
-
-            // Status enrol (tahunan)
             $st = strtolower((string)($r['status'] ?? ''));
             if (in_array($st, ['1', 'aktif', 'active', 'ya', 'true'], true)) $EnrolAktif++;
             else $EnrolNonAktif++;
@@ -3942,23 +4266,24 @@ class OperatorController extends BaseController
         ]);
     }
 
+
+
     public function page_tambah_laporan_guru(?string $param = null)
     {
-        $guruModel = new \App\Models\ModelGuru();          // kolom: id_guru (PK), nip, nama_lengkap, jenis_kelamin, status_active, ...
-        $taModel   = new \App\Models\TahunAjaranModel();   // kolom: id_tahun_ajaran, tahun, semester, is_active
+        $guruModel = new \App\Models\ModelGuru();          // tb_guru
+        $taModel   = new \App\Models\TahunAjaranModel();   // tb_tahun_ajaran
 
         $guruTerpilih = null;
         $isParamNip   = false;
 
         $param = isset($param) ? trim($param) : null;
 
-        if (!empty($param)) {
-            // 1) Coba sebagai id_guru (param numerik, "00123" tetap true di ctype_digit)
+        if ($param !== null && $param !== '') {
+            // 1) Coba sebagai id_guru
             if (ctype_digit($param)) {
                 $guruTerpilih = $guruModel
                     ->select('id_guru, nip, nama_lengkap')
-                    ->where('id_guru', (int) $param)
-                    ->limit(1)
+                    ->where('id_guru', (int)$param)
                     ->first();
             }
 
@@ -3967,11 +4292,10 @@ class OperatorController extends BaseController
                 $guruTerpilih = $guruModel
                     ->select('id_guru, nip, nama_lengkap')
                     ->where('nip', $param)
-                    ->limit(1)
                     ->first();
 
                 if ($guruTerpilih) {
-                    $isParamNip = true; // tandai param memang NIP
+                    $isParamNip = true;
                 }
             }
 
@@ -3981,9 +4305,7 @@ class OperatorController extends BaseController
             }
         }
 
-        // Dropdown guru:
-        // - Datang via NIP → kunci hanya 1 opsi (tidak bisa pilih guru lain)
-        // - Selain itu → tampilkan semua guru
+        // Dropdown guru
         if ($isParamNip && $guruTerpilih) {
             $d_guru = [$guruTerpilih];
         } else {
@@ -3993,32 +4315,49 @@ class OperatorController extends BaseController
                 ->findAll();
         }
 
-        // Tahun ajaran (semua; sesuaikan jika ingin hanya yang aktif)
-        $d_tahun = $taModel
+        // ======= Tahun ajaran: hanya yang AKTIF =======
+        // Ambil 1 TA aktif terbaru; kalau tidak ada, fallback ke TA terbaru (non-aktif) agar form tetap hidup.
+        $taAktif = $taModel
             ->select('id_tahun_ajaran, tahun, semester, is_active')
+            ->where('is_active', 1)
             ->orderBy('tahun', 'DESC')
-            ->orderBy('semester', 'ASC')
-            ->findAll();
+            ->orderBy('semester', 'DESC')
+            ->first();
+
+        if (!$taAktif) {
+            // fallback: pakai TA terbaru (non-aktif)
+            $taAktif = $taModel
+                ->select('id_tahun_ajaran, tahun, semester, is_active')
+                ->orderBy('tahun', 'DESC')
+                ->orderBy('semester', 'DESC')
+                ->first();
+        }
+
+        // Kirim ke view sebagai array berisi satu item saja (TA aktif)
+        $d_tahun = $taAktif ? [$taAktif] : [];
 
         $data = [
             'title'         => 'Tambah Data Guru | SDN Talun 2 Kota Serang',
             'sub_judul'     => 'Laporan Data Guru',
             'nav_link'      => 'Laporan Data Guru',
             'd_guru'        => $d_guru,
-            'd_tahun'       => $d_tahun,
+            'd_tahun'       => $d_tahun, // hanya 1 (aktif) atau fallback terbaru
             'guruTerpilih'  => $guruTerpilih,
             'preselectId'   => (int)($guruTerpilih['id_guru'] ?? 0),
 
-            // guard NIP untuk POST (verifikasi pasangan guru_id × nip_lock di aksi simpan)
+            // guard NIP untuk POST
             'nip_lock'      => $isParamNip && $guruTerpilih ? (string)$guruTerpilih['nip'] : null,
 
-            // opsional: bantu view mengunci dropdown
+            // kunci dropdown guru jika datang via NIP
             'lock_dropdown' => $isParamNip && $guruTerpilih,
+
+            // memudahkan view kalau perlu id TA aktif
+            'idTaAktif'     => (int)($taAktif['id_tahun_ajaran'] ?? 0),
         ];
 
-        // Sesuaikan dengan file view form GURU yang sudah kamu buat
         return view('pages/operator/tambah-guru-laporan', $data);
     }
+
     public function aksi_laporan_data_guru()
     {
         $req       = $this->request;
@@ -4243,31 +4582,45 @@ class OperatorController extends BaseController
     // laporan nilai siswa
     public function page_laporan_nilai_siswa()
     {
-        $req  = $this->request;
-        $q    = trim((string)($req->getGet('q') ?? ''));            // cari nama/NISN
-        $idTA = trim((string)($req->getGet('tahunajaran') ?? ''));  // id_tahun_ajaran (opsional)
-        $kodeKat = trim((string)($req->getGet('kategori') ?? ''));  // opsional: UTS/UAS
-        $idMapel = trim((string)($req->getGet('mapel') ?? ''));     // opsional: id_mapel
+        $req      = $this->request;
+        $q        = trim((string)($req->getGet('q') ?? ''));             // cari nama/NISN
+        $idTA     = trim((string)($req->getGet('tahunajaran') ?? ''));   // id_tahun_ajaran (opsional)
+        $kodeKat  = trim((string)($req->getGet('kategori') ?? ''));      // opsional: UTS/UAS
+        $idMapel  = trim((string)($req->getGet('mapel') ?? ''));         // opsional: id_mapel
 
         $nilaiModel = new \App\Models\NilaiSiswaModel();  // tb_nilai_siswa
 
-        // Base builder: ambil nilai + identitas siswa + TA + mapel + kategori
-        $builder = $nilaiModel
+        $builder = $nilaiModel->builder()->from('tb_nilai_siswa ns')
             ->select("
-            id_nilai, siswa_id, tahun_ajaran_id, mapel_id, kategori_id, skor, tanggal, keterangan,
+            ns.id_nilai,
+            ns.siswa_id,
+            ns.tahun_ajaran_id,
+            ns.mapel_id,
+            ns.kategori_id,
+            ns.skor,
+            DATE_FORMAT(ns.tanggal, '%Y-%m-%d') AS tanggal_nilai,
+            ns.keterangan AS keterangan_nilai,
 
-            s.id_siswa, s.nisn, s.full_name, s.gender,
+            s.id_siswa         AS s_id,
+            s.nisn             AS siswa_nisn,
+            s.full_name        AS siswa_nama,
+            s.gender           AS siswa_gender,
 
-            ta.id_tahun_ajaran, ta.tahun AS tahun_ajaran, ta.semester,
+            ta.id_tahun_ajaran AS ta_id,
+            ta.tahun           AS tahun_ajaran,
+            ta.semester        AS semester,
 
-            m.id_mapel, m.nama,
+            m.id_mapel         AS m_id,
+            m.nama             AS mapel_nama,
 
-            k.id_kategori, k.kode AS kategori_kode, k.nama AS kategori_nama
+            k.id_kategori      AS k_id,
+            k.kode             AS kategori_kode,
+            k.nama             AS kategori_nama
         ", false)
-            ->join('tb_siswa s', 's.id_siswa = siswa_id', 'left')
-            ->join('tb_tahun_ajaran ta', 'ta.id_tahun_ajaran = tahun_ajaran_id', 'left')
-            ->join('tb_mapel m', 'm.id_mapel = mapel_id', 'left')
-            ->join('tb_kategori_nilai k', 'k.id_kategori = kategori_id', 'left');
+            ->join('tb_siswa s', 's.id_siswa = ns.siswa_id', 'left')
+            ->join('tb_tahun_ajaran ta', 'ta.id_tahun_ajaran = ns.tahun_ajaran_id', 'left')
+            ->join('tb_mapel m', 'm.id_mapel = ns.mapel_id', 'left')
+            ->join('tb_kategori_nilai k', 'k.id_kategori = ns.kategori_id', 'left');
 
         // Filter q (nama / NISN)
         if ($q !== '') {
@@ -4279,26 +4632,30 @@ class OperatorController extends BaseController
 
         // Filter Tahun Ajaran (id)
         if ($idTA !== '' && ctype_digit($idTA)) {
-            $builder->where('tahun_ajaran_id', (int) $idTA);
+            $builder->where('ns.tahun_ajaran_id', (int)$idTA);
         }
 
         // (Opsional) Filter Kategori: UTS/UAS via kode
         if ($kodeKat !== '') {
-            $builder->where('k.kode', strtoupper($kodeKat)); // contoh: ?kategori=UTS
+            $builder->where('k.kode', strtoupper($kodeKat));
         }
 
         // (Opsional) Filter Mapel: id_mapel
         if ($idMapel !== '' && ctype_digit($idMapel)) {
-            $builder->where('mapel_id', (int) $idMapel);
+            $builder->where('ns.mapel_id', (int)$idMapel);
         }
+
+        // Hilangkan duplikasi akibat join — kunci ke PK nilai
+        $builder->groupBy('ns.id_nilai');
 
         // Urutkan: Nama siswa → Mapel → Kategori (UTS/UAS) → tanggal
         $rows = $builder
             ->orderBy('s.full_name', 'ASC')
             ->orderBy('m.nama', 'ASC')
             ->orderBy('k.kode', 'ASC')
-            ->orderBy('tanggal', 'ASC')
-            ->findAll();
+            ->orderBy('ns.tanggal', 'ASC')
+            ->get()
+            ->getResultArray();
 
         // Ringkasan sederhana
         $totalNilai = count($rows);
@@ -4308,19 +4665,51 @@ class OperatorController extends BaseController
         }
         $totalSiswa = count($distinctSiswa);
 
+        // ===== Ambil opsi dropdown dari DB =====
+        $db = \Config\Database::connect();
+
+        // Tahun Ajaran
+        $listTA = $db->table('tb_tahun_ajaran')
+            ->select('id_tahun_ajaran, tahun, semester, is_active')
+            ->orderBy('tahun', 'DESC')
+            ->orderBy('semester', 'ASC')
+            ->get()
+            ->getResultArray();
+
+        // Kategori (UTS/UAS) - case-insensitive
+        $listKat = $db->table('tb_kategori_nilai')
+            ->select('id_kategori, kode, nama')
+            ->where('UPPER(kode) IN ("UTS","UAS")', null, false) // raw agar aman untuk semua case
+            ->orderBy('kode', 'ASC')
+            ->get()
+            ->getResultArray();
+
+        // Mapel
+        $listMapel = $db->table('tb_mapel')
+            ->select('id_mapel, nama, kode')
+            ->orderBy('nama', 'ASC')
+            ->get()
+            ->getResultArray();
+
         return view('pages/operator/laporan_nilai_siswa', [
             'title'         => 'Laporan Nilai Siswa | SDN Talun 2 Kota Serang',
             'sub_judul'     => 'Laporan Nilai Siswa',
             'nav_link'      => 'Laporan Nilai',
-            'd_nilai'       => $rows,        // berisi nilai + siswa + TA + mapel + kategori
+            'd_nilai'       => $rows,
             'q'             => $q,
             'tahunajaran'   => $idTA,
             'kategori'      => $kodeKat,
             'mapel'         => $idMapel,
             'totalNilai'    => $totalNilai,
             'totalSiswa'    => $totalSiswa,
+
+            // opsi dropdown
+            'listTA'        => $listTA,
+            'listKat'       => $listKat,
+            'listMapel'     => $listMapel,
         ]);
     }
+
 
     public function page_tambah_nilai_siswa()
     {
@@ -4354,15 +4743,21 @@ class OperatorController extends BaseController
             ->join('tb_mapel m', 'm.id_mapel = ns.mapel_id', 'left')
             ->join('tb_kategori_nilai k', 'k.id_kategori = ns.kategori_id', 'left');
 
+        // Selalu batasi TA aktif (ingat: kolom di DB adalah is_active)
+        $builder->where('ta.is_active', 1);
+
         if ($q !== '') {
             $builder->groupStart()
                 ->like('s.full_name', $q)
                 ->orLike('s.nisn', $q)
                 ->groupEnd();
         }
+
         if ($idTA !== '' && ctype_digit($idTA)) {
+            // Tetap batasi ke TA aktif + id yang dipilih
             $builder->where('ns.tahun_ajaran_id', (int)$idTA);
         }
+
         if ($kodeKat !== '') {
             $builder->where('k.kode', strtoupper($kodeKat));
         }
@@ -4385,7 +4780,7 @@ class OperatorController extends BaseController
         }
         $totalSiswa = count($distinctSiswa);
 
-        // ====== DROPDOWN LANGSUNG DARI MODEL ======
+        // ====== DROPDOWN ======
         // Siswa
         $siswaModel = new \App\Models\SiswaModel();
         $siswaQ = $siswaModel->select('id_siswa, nisn, full_name')->orderBy('full_name', 'ASC');
@@ -4394,10 +4789,12 @@ class OperatorController extends BaseController
         }
         $optSiswa = $siswaQ->findAll(500);
 
-        // Tahun Ajaran
+        // Tahun Ajaran (hanya aktif)
         $taModel = new \App\Models\TahunAjaranModel();
         $optTA   = $taModel->select('id_tahun_ajaran, tahun, semester')
-            ->orderBy('tahun', 'DESC')->orderBy('semester', 'ASC')
+            ->where('is_active', 1) // <— kolom yang benar
+            ->orderBy('tahun', 'DESC')
+            ->orderBy('semester', 'ASC')
             ->findAll(200);
 
         // Mapel
@@ -4410,7 +4807,7 @@ class OperatorController extends BaseController
         $optKategori = $katModel->select('id_kategori, kode, nama')
             ->orderBy('nama', 'ASC')->findAll(100);
 
-        // allowedFields (guard)
+        // allowedFields
         $allowedFields = method_exists($nilaiModel, 'getAllowedFields')
             ? $nilaiModel->getAllowedFields()
             : ['siswa_id', 'tahun_ajaran_id', 'mapel_id', 'kategori_id', 'skor', 'tanggal', 'keterangan'];
@@ -4435,7 +4832,7 @@ class OperatorController extends BaseController
 
             // dropdown sources
             'optSiswa'      => $optSiswa,
-            'optTA'         => $optTA,
+            'optTA'         => $optTA,     // hanya TA aktif (ganjil = 1)
             'optMapel'      => $optMapel,
             'optKategori'   => $optKategori,
 
@@ -4443,6 +4840,7 @@ class OperatorController extends BaseController
             'allowedFields' => $allowedFields,
         ]);
     }
+
 
     public function aksi_tambah_nilai_siswa()
     {
@@ -4570,7 +4968,7 @@ class OperatorController extends BaseController
     }
     public function page_edit_nilai_siswa($idNilai = null)
     {
-        $req     = $this->request;
+        $req = $this->request;
 
         // ===== Filter GET (untuk konteks kembali) =====
         $q       = trim((string)($req->getGet('q') ?? ''));            // cari nama/NISN
@@ -4634,11 +5032,18 @@ class OperatorController extends BaseController
         }
         $optSiswa = $siswaQ->findAll(500);
 
-        // Tahun Ajaran
+        // Tahun Ajaran — tampilkan dan tandai yang aktif
         $taModel = new \App\Models\TahunAjaranModel();
-        $optTA   = $taModel->select('id_tahun_ajaran, tahun, semester')
-            ->orderBy('tahun', 'DESC')->orderBy('semester', 'ASC')
+        $optTA   = $taModel->select('id_tahun_ajaran, tahun, semester, is_active')
+            ->orderBy('is_active', 'DESC')   // aktif di atas
+            ->orderBy('tahun', 'DESC')
+            ->orderBy('semester', 'ASC')
             ->findAll(200);
+        // === Jika ingin hanya TA aktif, ganti blok di atas dengan:
+        // $optTA = $taModel->select('id_tahun_ajaran, tahun, semester, is_active')
+        //     ->where('is_active', 1)
+        //     ->orderBy('tahun', 'DESC')->orderBy('semester', 'ASC')
+        //     ->findAll(200);
 
         // Mapel
         $mapelModel = new \App\Models\ModelMatPel();
@@ -4669,8 +5074,8 @@ class OperatorController extends BaseController
             'nav_link'      => 'Nilai Siswa',
 
             // data utama
-            'row'           => $row,          // record yang akan diedit
-            'id_nilai'      => (int)$idNilai, // convenience
+            'row'           => $row,
+            'id_nilai'      => (int)$idNilai,
 
             // filter GET (konteks)
             'q'             => $q,
@@ -4681,7 +5086,7 @@ class OperatorController extends BaseController
 
             // dropdown sources
             'optSiswa'      => $optSiswa,
-            'optTA'         => $optTA,
+            'optTA'         => $optTA,       // sudah ada is_active
             'optMapel'      => $optMapel,
             'optKategori'   => $optKategori,
 
@@ -4689,6 +5094,7 @@ class OperatorController extends BaseController
             'allowedFields' => $allowedFields,
         ]);
     }
+
     public function aksi_edit_nilai_siswa($idNilai = null)
     {
         // ID dari route wajib numerik
@@ -4729,17 +5135,25 @@ class OperatorController extends BaseController
             'mapel'       => $idMapelGt,
         ]);
 
-        // ===== Input =====
+        // ===== Input (rapikan tipe) =====
         $data = [
-            'siswa_id'        => (string) $req->getPost('siswa_id'),
-            'tahun_ajaran_id' => (string) $req->getPost('tahun_ajaran_id'),
-            'mapel_id'        => (string) $req->getPost('mapel_id'),
-            'kategori_id'     => (string) $req->getPost('kategori_id'),
-            'skor'            => (string) $req->getPost('skor'),
-            'tanggal'         => (string) $req->getPost('tanggal'),
-            'keterangan'      => (string) $req->getPost('keterangan'),
-            // 'id_nilai' JANGAN diambil dari POST
+            'siswa_id'        => trim((string) $req->getPost('siswa_id')),
+            'tahun_ajaran_id' => trim((string) $req->getPost('tahun_ajaran_id')),
+            'mapel_id'        => trim((string) $req->getPost('mapel_id')),
+            'kategori_id'     => trim((string) $req->getPost('kategori_id')),
+            'skor'            => trim((string) $req->getPost('skor')),
+            'tanggal'         => trim((string) $req->getPost('tanggal')),
+            'keterangan'      => trim((string) $req->getPost('keterangan')),
         ];
+
+        // ===== Ambil daftar Tahun Ajaran AKTIF untuk validasi =====
+        $db = \Config\Database::connect();
+        $activeTA = $db->table('tb_tahun_ajaran')
+            ->select('id_tahun_ajaran')
+            ->where('is_active', 1)
+            ->get()->getResultArray();
+        $activeTAIds = array_map('strval', array_column($activeTA, 'id_tahun_ajaran'));
+        $taInListRule = $activeTAIds ? 'in_list[' . implode(',', $activeTAIds) . ']' : ''; // jika tidak ada TA aktif, rule ini kosong
 
         // ===== Validasi =====
         $rules = [
@@ -4754,11 +5168,13 @@ class OperatorController extends BaseController
             ],
             'tahun_ajaran_id' => [
                 'label'  => 'Tahun Ajaran',
-                'rules'  => 'required|is_natural_no_zero|is_not_unique[tb_tahun_ajaran.id_tahun_ajaran]',
+                // wajib ada di tabel + (jika ada) wajib termasuk TA aktif
+                'rules'  => 'required|is_natural_no_zero|is_not_unique[tb_tahun_ajaran.id_tahun_ajaran]' . ($taInListRule ? ('|' . $taInListRule) : ''),
                 'errors' => [
                     'required'           => '{field} wajib dipilih.',
                     'is_natural_no_zero' => '{field} tidak valid.',
                     'is_not_unique'      => '{field} tidak ditemukan.',
+                    'in_list'            => '{field} harus Tahun Ajaran yang aktif.',
                 ],
             ],
             'mapel_id' => [
@@ -4814,6 +5230,12 @@ class OperatorController extends BaseController
         $payload = array_intersect_key($data, array_flip($m->getAllowedFields()));
         unset($payload['id_nilai']);
 
+        // (opsional) normalisasi tipe numerik
+        $payload['siswa_id']        = (int)$payload['siswa_id'];
+        $payload['tahun_ajaran_id'] = (int)$payload['tahun_ajaran_id'];
+        $payload['mapel_id']        = (int)$payload['mapel_id'];
+        $payload['kategori_id']     = (int)$payload['kategori_id'];
+
         // ===== Cegah duplikasi kombinasi kunci (kecuali record ini) =====
         $exists = (clone $m)
             ->where('siswa_id',        $payload['siswa_id'])
@@ -4824,7 +5246,6 @@ class OperatorController extends BaseController
             ->countAllResults();
 
         if ($exists > 0) {
-            $db   = \Config\Database::connect();
             $nama = $db->table('tb_siswa')->select('full_name')->where('id_siswa', $payload['siswa_id'])->get()->getRow('full_name');
             $map  = $db->table('tb_mapel')->select('nama')->where('id_mapel', $payload['mapel_id'])->get()->getRow('nama');
             $kat  = $db->table('tb_kategori_nilai')->select('kode')->where('id_kategori', $payload['kategori_id'])->get()->getRow('kode');
@@ -4848,6 +5269,7 @@ class OperatorController extends BaseController
             return redirect()->back()->withInput()->with('errors', ['db' => $e->getMessage()]);
         }
     }
+
 
 
 

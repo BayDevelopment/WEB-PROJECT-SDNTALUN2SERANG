@@ -70,6 +70,19 @@
         background: rgba(255, 255, 255, .4);
         pointer-events: auto
     }
+
+    .position-relative .input-icon.btn {
+        position: absolute;
+        right: .75rem;
+        top: 50%;
+        transform: translateY(-50%);
+        line-height: 1;
+        color: var(--bs-secondary-color);
+    }
+
+    .position-relative .input-icon.btn:hover {
+        color: var(--bs-body-color);
+    }
 </style>
 
 <div class="container-fluid px-4 page-section">
@@ -130,17 +143,34 @@
                     <!-- Password (opsional) -->
                     <div class="col-md-6">
                         <label for="password" class="form-label">Password (opsional)</label>
-                        <input
-                            type="password"
-                            class="form-control<?= $hasErr('password') ? ' is-invalid' : '' ?>"
-                            id="password" name="password"
-                            placeholder="Kosongkan jika tidak ingin mengubah"
-                            aria-describedby="passwordFeedback">
+                        <div class="position-relative">
+                            <input
+                                type="password"
+                                class="form-control<?= $hasErr('password') ? ' is-invalid' : '' ?>"
+                                id="password" name="password"
+                                placeholder="Kosongkan jika tidak ingin mengubah"
+                                aria-describedby="passwordFeedback togglePwHelp">
+
+                            <!-- tombol mata -->
+                            <button type="button"
+                                class="input-icon btn btn-link p-0 border-0 btn-toggle-pass"
+                                data-target="#password"
+                                aria-label="Tampilkan/sembunyikan password"
+                                aria-pressed="false">
+                                <i class="fa-solid fa-eye"></i>
+                            </button>
+                        </div>
+
+                        <small id="togglePwHelp" class="visually-hidden">
+                            Tekan ikon mata untuk menampilkan atau menyembunyikan password.
+                        </small>
+
                         <div class="form-text">Minimal 6 karakter bila diisi.</div>
                         <?php if ($hasErr('password')): ?>
                             <div id="passwordFeedback" class="invalid-feedback d-block"><?= esc($getErr('password')) ?></div>
                         <?php endif; ?>
                     </div>
+
 
                     <!-- Role -->
                     <div class="col-md-6">
@@ -208,9 +238,25 @@
         </div>
     </div>
 </div>
-
+<?= $this->endSection() ?>
+<?= $this->section('scripts') ?>
 <!-- JS: preview foto, reset foto, dan loading state submit -->
 <script>
+    document.addEventListener('click', function(e) {
+        const btn = e.target.closest('.btn-toggle-pass');
+        if (!btn) return;
+        const target = document.querySelector(btn.dataset.target);
+        if (!target) return;
+
+        const isPwd = target.type === 'password';
+        target.type = isPwd ? 'text' : 'password';
+        btn.setAttribute('aria-pressed', String(isPwd));
+        btn.innerHTML = isPwd ?
+            '<i class="fa-solid fa-eye-slash"></i>' :
+            '<i class="fa-solid fa-eye"></i>';
+        target.focus();
+    });
+
     (function() {
         const form = document.getElementById('formEditUser');
         const btnSubmit = document.getElementById('btnSubmit');

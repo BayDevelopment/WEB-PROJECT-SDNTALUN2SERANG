@@ -129,19 +129,39 @@
                                 $idNilai     = (int)($row['id_nilai'] ?? 0);
                                 $nisn        = (string)($row['nisn'] ?? '');
                                 $nama        = (string)($row['full_name'] ?? $row['nama_lengkap'] ?? '');
-                                $gender      = (string)($row['gender'] ?? '—');
 
-                                $taTahun     = (string)($row['tahun_ajaran'] ?? '');
-                                $taSmtr      = (string)($row['semester'] ?? '');
-                                $mapelNama   = (string)($row['nama'] ?? '');
-                                $katKode     = (string)($row['kategori_kode'] ?? '');
-                                $skor        = (string)($row['skor'] ?? '');
+                                // === Normalisasi Gender -> L/P ===
+                                $genderRaw = (string)($row['gender'] ?? '');
+                                $genderLow = mb_strtolower(trim($genderRaw), 'UTF-8');
 
-                                // gunakan alias dari controller
-                                $tgl         = $fmtDMY($row['tanggal_nilai'] ?? null);
-                                $ket         = (string)($row['nilai_keterangan'] ?? '');
+                                $isL = preg_match('/^(l|laki|lk|male|m)/i', $genderRaw) || str_contains($genderLow, 'laki');
+                                $isP = preg_match('/^(p|perem|pr|wanita|female|f)/i', $genderRaw) || str_contains($genderLow, 'perem');
 
-                                // Query string agar kembali ke filter terakhir setelah edit
+                                if ($isL) {
+                                    $genderShort = 'L';
+                                    $genderFull  = 'Laki-laki';
+                                    $badgeGender = 'badge rounded-pill bg-primary';
+                                } elseif ($isP) {
+                                    $genderShort = 'P';
+                                    $genderFull  = 'Perempuan';
+                                    $badgeGender = 'badge rounded-pill bg-danger';
+                                } else {
+                                    $genderShort = '—';
+                                    $genderFull  = ($genderRaw !== '' ? $genderRaw : 'Tidak diketahui');
+                                    $badgeGender = 'badge rounded-pill bg-secondary';
+                                }
+
+                                $taTahun   = (string)($row['tahun_ajaran'] ?? '');
+                                $taSmtr    = (string)($row['semester'] ?? '');
+                                $mapelNama = (string)($row['nama'] ?? '');
+                                $katKode   = (string)($row['kategori_kode'] ?? '');
+                                $skor      = (string)($row['skor'] ?? '');
+
+                                // alias dari controller
+                                $tgl = $fmtDMY($row['tanggal_nilai'] ?? null);
+                                $ket = (string)($row['nilai_keterangan'] ?? '');
+
+                                // (opsional) QS untuk kembali ke filter terakhir ketika buat link edit
                                 $qs = http_build_query([
                                     'q'           => $q           ?? '',
                                     'tahunajaran' => $tahunajaran ?? '',
@@ -154,18 +174,23 @@
                                     <td class="text-muted"><?= $no++ ?>.</td>
                                     <td><span class="font-monospace"><?= esc($nisn) ?></span></td>
                                     <td class="fw-semibold"><?= esc($nama) ?></td>
-                                    <td><?= esc($gender) ?></td>
+                                    <td>
+                                        <span class="<?= esc($badgeGender) ?>"
+                                            title="<?= esc($genderFull) ?>"
+                                            aria-label="Jenis kelamin: <?= esc($genderFull) ?>">
+                                            <?= esc($genderFull) ?>
+                                        </span>
+                                    </td>
                                     <td><?= esc($taTahun) ?></td>
                                     <td><?= esc($taSmtr) ?></td>
                                     <td><?= esc($mapelNama) ?></td>
                                     <td><?= esc($katKode) ?></td>
                                     <td><?= esc($skor) ?></td>
-                                    <td><?= esc($tgl) ?></td>
+                                    <td><?= esc(format_ddmmyyyy_ke_tanggal_indo($tgl)) ?></td>
                                     <td><?= esc($ket) ?></td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>
-
                     </table>
                 </div>
             <?php else: ?>

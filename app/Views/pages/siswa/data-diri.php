@@ -272,13 +272,17 @@
     </div>
 </div>
 
-<!-- Data PHP -> JS -->
+<?= $this->endSection() ?>
+
+<?= $this->section('scripts') ?>
+
+<!-- Data PHP → JS (sinkron dengan controller) -->
 <script>
     const mapelLabels = <?= json_encode($mapelLabels ?? [], JSON_UNESCAPED_UNICODE) ?>;
     const mapelScores = <?= json_encode($mapelScores ?? [], JSON_NUMERIC_CHECK) ?>;
 </script>
 
-<!-- Chart.js -->
+<!-- Chart.js (defer) -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" defer></script>
 
 <!-- Init Chart -->
@@ -286,10 +290,11 @@
     (function bootCharts(attempt = 0) {
         if (!window.Chart) {
             if (attempt < 60) return setTimeout(() => bootCharts(attempt + 1), 100);
-            console.error('Chart.js belum termuat.');
+            console.error('Chart.js belum termuat. Cek CDN / file lokal / CSP.');
             return;
         }
 
+        // Global theme
         Chart.defaults.font.family = `'Inter',system-ui,-apple-system,Segoe UI,Roboto,'Helvetica Neue',Arial`;
         Chart.defaults.color = '#6b7280';
         Chart.defaults.plugins.legend.display = false;
@@ -299,6 +304,7 @@
 
         const ACCENTS = ['#0d6efd', '#3d8bfd', '#0b5ed7', '#6ea8fe', '#9ec5fe', '#cfe2ff', '#74a5ff'];
 
+        // Bar: Mapel
         const el = document.getElementById('chartMapel');
         if (el && Array.isArray(mapelLabels) && mapelLabels.length) {
             new Chart(el.getContext('2d'), {

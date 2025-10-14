@@ -443,44 +443,89 @@
                                     <input type="hidden" name="old_id_tahun_ajaran" value="<?= esc((int)($gmEdit['id_tahun_ajaran'] ?? 0), 'attr') ?>">
 
 
-                                    <!-- Mapel -->
-                                    <div class="col-12 col-md-4">
-                                        <label class="form-label">Mata Pelajaran</label>
+                                    <!-- MAPEL (MULTI) -->
+                                    <div class="col-12 col-md-6">
+                                        <label class="form-label d-flex justify-content-between align-items-center">
+                                            <span>Mata Pelajaran</span>
+                                            <button type="button" id="btnAddMapel" class="btn btn-sm btn-outline-primary">
+                                                <i class="fa fa-plus"></i> Tambah Mapel
+                                            </button>
+                                        </label>
+
                                         <?php
-                                        $selectedId = (int) old('id_mapel', (string)($gmEdit['id_mapel'] ?? 0));
-                                        $selectedOpt = null;
-                                        if (!empty($optMapel)) {
-                                            foreach ($optMapel as $m) {
-                                                if ((int)($m['id_mapel'] ?? 0) === $selectedId) {
-                                                    $selectedOpt = $m;
-                                                    break;
-                                                }
+                                        // Ambil nilai lama (old) => array; kalau tidak ada, pakai dari data edit (satu/lebih)
+                                        $preMapelIds = old('id_mapel'); // bisa null/string/array
+                                        if (!is_array($preMapelIds)) {
+                                            $preMapelIds = $preMapelIds !== null && $preMapelIds !== '' ? [$preMapelIds] : [];
+                                        }
+                                        // fallback dari $gmEdit (jika ada struktur list mapel)
+                                        if (empty($preMapelIds)) {
+                                            // jika view kamu hanya punya satu id sebelumnya:
+                                            if (!empty($gmEdit['id_mapel'])) {
+                                                $preMapelIds = [(string)$gmEdit['id_mapel']];
+                                            }
+                                            // kalau kamu punya array mapel lama ($gmEdit['mapel_ids']):
+                                            if (!empty($gmEdit['mapel_ids']) && is_array($gmEdit['mapel_ids'])) {
+                                                $preMapelIds = array_map('strval', $gmEdit['mapel_ids']);
                                             }
                                         }
+                                        if (empty($preMapelIds)) {
+                                            // wajib ada satu row kosong minimal
+                                            $preMapelIds = [''];
+                                        }
+
+                                        // helper render option
+                                        $renderMapelOption = function (array $optMapel, $selected = '') {
+                                            foreach ($optMapel as $m) {
+                                                $mid = (string)($m['id_mapel'] ?? '');
+                                                $nama = (string)($m['nama_mapel'] ?? $m['nama'] ?? 'Mapel');
+                                                $kode = (string)($m['kode'] ?? $m['kode_mapel'] ?? '');
+                                                $label = ($kode !== '' ? "[$kode] " : '') . $nama;
+                                                $sel = ($mid !== '' && $mid === (string)$selected) ? 'selected' : '';
+                                                echo '<option value="' . esc($mid, 'attr') . '" ' . $sel . '>' . esc($label) . '</option>';
+                                            }
+                                        };
                                         ?>
-                                        <select name="id_mapel" class="form-select<?= $hasErr('id_mapel') ? ' is-invalid' : '' ?>" required>
-                                            <?php if ($selectedOpt): ?>
-                                                <option value="<?= esc((int)$selectedOpt['id_mapel'], 'attr') ?>" selected><?= esc($selectedOpt['nama'] ?? 'Mapel') ?></option>
-                                                <?php foreach ($optMapel as $m):
-                                                    $val = (int)($m['id_mapel'] ?? 0);
-                                                    if ($val === $selectedId) continue; ?>
-                                                    <option value="<?= esc($val, 'attr') ?>"><?= esc($m['nama'] ?? 'Mapel') ?></option>
-                                                <?php endforeach; ?>
-                                            <?php else: ?>
-                                                <option value="" disabled selected>— Pilih Mapel —</option>
-                                                <?php if (!empty($optMapel)): foreach ($optMapel as $m): ?>
-                                                        <option value="<?= esc((int)($m['id_mapel'] ?? 0), 'attr') ?>"><?= esc($m['nama'] ?? 'Mapel') ?></option>
-                                                <?php endforeach;
-                                                endif; ?>
-                                            <?php endif; ?>
-                                        </select>
+
+                                        <div id="mapelContainer" class="d-flex flex-column gap-2">
+                                            <?php foreach ($preMapelIds as $i => $preId): ?>
+                                                <div class="mapel-row d-flex gap-2">
+                                                    <select class="form-select<?= $hasErr('id_mapel') ? ' is-invalid' : '' ?>"
+                                                        name="id_mapel[]" required aria-label="Pilih Mapel">
+                                                        <option value="" disabled <?= $preId === '' ? 'selected' : '' ?>>— Pilih Mapel —</option>
+                                                        <?php if (!empty($optMapel)) $renderMapelOption($optMapel, $preId); ?>
+                                                    </select>
+                                                    <button type="button"
+                                                        class="btn btn-outline-danger btnRemoveMapel <?= $i === 0 ? 'd-none' : '' ?>"
+                                                        aria-label="Hapus baris mapel">
+                                                        <i class="fa fa-trash"></i>
+                                                    </button>
+                                                </div>
+                                            <?php endforeach; ?>
+                                        </div>
+
                                         <?php if ($hasErr('id_mapel')): ?>
                                             <div class="invalid-feedback d-block"><?= esc($getErr('id_mapel')) ?></div>
                                         <?php endif; ?>
+                                        <div class="form-text">Anda dapat menambahkan lebih dari satu mata pelajaran.</div>
                                     </div>
 
+                                    <!-- TEMPLATE (disembunyikan) -->
+                                    <template id="mapelRowTpl">
+                                        <div class="mapel-row d-flex gap-2">
+                                            <select class="form-select" name="id_mapel[]" required aria-label="Pilih Mapel">
+                                                <option value="" disabled selected>— Pilih Mapel —</option>
+                                                <?php if (!empty($optMapel)) $renderMapelOption($optMapel, ''); ?>
+                                            </select>
+                                            <button type="button" class="btn btn-outline-danger btnRemoveMapel" aria-label="Hapus baris mapel">
+                                                <i class="fa fa-trash"></i>
+                                            </button>
+                                        </div>
+                                    </template>
+
+
                                     <!-- Kelas (dinamis) -->
-                                    <div class="col-12 col-md-8">
+                                    <div class="col-12 col-md-6">
                                         <label class="form-label d-flex align-items-center justify-content-between">
                                             <span>Kelas</span>
                                             <button type="button" id="btnAddKelas" class="btn btn-sm btn-outline-primary">+ Tambah Kelas</button>
@@ -650,6 +695,46 @@
 </div><!-- /container -->
 
 <script>
+    // mapel multi
+    document.addEventListener('DOMContentLoaded', () => {
+        const container = document.getElementById('mapelContainer');
+        const tpl = document.getElementById('mapelRowTpl');
+        const btnAdd = document.getElementById('btnAddMapel');
+
+        // tambah baris
+        btnAdd?.addEventListener('click', () => {
+            const node = tpl.content.firstElementChild.cloneNode(true);
+            container.appendChild(node);
+            syncRemoveButtons();
+        });
+
+        // hapus baris (event delegation)
+        container?.addEventListener('click', (e) => {
+            const btn = e.target.closest('.btnRemoveMapel');
+            if (!btn) return;
+            const row = btn.closest('.mapel-row');
+            if (!row) return;
+
+            // minimal 1 baris tersisa
+            const rows = container.querySelectorAll('.mapel-row');
+            if (rows.length <= 1) return;
+
+            row.remove();
+            syncRemoveButtons();
+        });
+
+        function syncRemoveButtons() {
+            const rows = container.querySelectorAll('.mapel-row');
+            rows.forEach((r, idx) => {
+                const delBtn = r.querySelector('.btnRemoveMapel');
+                if (!delBtn) return;
+                // baris pertama tidak boleh dihapus supaya selalu ada minimal satu baris
+                delBtn.classList.toggle('d-none', idx === 0);
+            });
+        }
+        syncRemoveButtons();
+    });
+
     // Salin NIP
     document.getElementById('btnCopyNip')?.addEventListener('click', () => {
         const el = document.getElementById('nipText');

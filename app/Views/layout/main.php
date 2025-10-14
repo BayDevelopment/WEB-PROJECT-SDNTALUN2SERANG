@@ -115,6 +115,19 @@
     <!-- (opsional) script lokal kamu, dibuat non-blocking -->
     <script defer src="<?= base_url('assets/js/scripts.js') ?>"></script>
 
+    <!-- (Opsional) jQuery: boleh ada meski kita pakai API vanilla -->
+    <script src="https://code.jquery.com/jquery-3.7.1.js"></script>
+
+    <!-- DataTables core + Bootstrap 5 adapter -->
+    <script src="https://cdn.datatables.net/2.3.4/js/dataTables.js"></script>
+    <script src="https://cdn.datatables.net/2.3.4/js/dataTables.bootstrap5.js"></script>
+
+    <!-- ===== Chart.js ===== -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"
+        integrity="sha384-2gJ3cQzYwU5QXqv+g0h0mXzB1q2n8c3e0n8j2c+Kq+fKk8bC+3o6s6p0kF1Xo1wS"
+        crossorigin="anonymous"></script>
+
+    <?= $this->renderSection('scripts') ?>
     <script>
         // ===== Util loader dinamis =====
         function loadScript(src, {
@@ -223,7 +236,7 @@
         const dtSelectors = [
             '#tableDataSiswa', '#tableDataGuru', '#tableDataUser',
             '#tableDataPenugasan', '#tableDataSiswaLaporan',
-            '#tableDataGuruLaporan', '#tableDataNilai', '#tableDataGuruSiswa'
+            '#tableDataGuruLaporan', '#tableDataNilai', '#tableDataGuruSiswa', '#tableDataMatpel'
         ];
 
         async function ensureDataTables() {
@@ -585,6 +598,68 @@
                     },
                     [0, 2, 3, 4, 5]
                 );
+                initDT('#tableDataMatpel', {
+                    columnDefs: [{
+                            targets: '_all',
+                            className: 'dt-nowrap'
+                        },
+                        {
+                            targets: 0,
+                            orderable: false,
+                            searchable: false
+                        }, // No
+                        {
+                            targets: 3,
+                            orderable: false,
+                            searchable: false,
+                            className: 'text-end'
+                        } // Aksi
+                    ],
+                    order: [
+                        [2, 'asc']
+                    ], // urut Nama Mata Pelajaran
+                    titleExport: 'Data_Mata_Pelajaran',
+                    filenameExport: 'Data_Mata_Pelajaran'
+                }, [0, 1, 2]);
+                // Tambahkan di blok inisialisasi DataTables kamu
+                initDT('#tableDataTahunAjaran', {
+                    columnDefs: [{
+                            targets: '_all',
+                            className: 'dt-nowrap'
+                        },
+                        {
+                            targets: 0,
+                            orderable: false,
+                            searchable: false
+                        }, // No
+                        {
+                            targets: 3, // Status (badge)
+                            render: (data, type) => {
+                                // Supaya saat export/print badge jadi teks polos
+                                if (type === 'export' || type === 'print') {
+                                    const tmp = document.createElement('div');
+                                    tmp.innerHTML = data ?? '';
+                                    return (tmp.textContent || '').trim();
+                                }
+                                return data;
+                            }
+                        },
+                        {
+                            targets: 4,
+                            orderable: false,
+                            searchable: false,
+                            className: 'text-end'
+                        } // Aksi
+                    ],
+                    // Urut default: Tahun DESC lalu Semester ASC
+                    order: [
+                        [2, 'desc'],
+                        [1, 'asc']
+                    ],
+                    titleExport: 'Data_Tahun_Ajaran',
+                    filenameExport: 'Data_Tahun_Ajaran'
+                }, [0, 1, 2, 3]); // kolom diekspor (tanpa Aksi)
+
 
             } catch (e) {
                 console.warn('DataTables gagal dimuat/inisialisasi:', e);

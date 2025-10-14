@@ -234,8 +234,8 @@
     <footer class="py-4 bg-light-modern mt-auto">
         <div class="container-fluid px-4">
             <div class="d-flex align-items-center justify-content-between small">
-                <div class="text-muted">© <?= date('Y') ?> Sekolah Dasar Negeri Talun 2 Kota Cilegon</div>
-                <div>Developed by &middot; <a class="link-inverse" href="#">Alfiyan</a></div>
+                <div class="text-muted">© <?= date('Y') ?> Sekolah Dasar Negeri Talun 2 Kab Serang</div>
+                <div>Developed by &middot; <a class="link-inverse" href="#">Alfyan Muzakki</a></div>
             </div>
         </div>
     </footer>
@@ -244,6 +244,91 @@
     <script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
 
     <script>
+        // disabled submit
+        (function() {
+            const form = document.getElementById('loginForm');
+            if (!form) return;
+
+            // ===== Toggle show/hide password =====
+            const pass = document.getElementById('inputPassword');
+            const btnToggle = document.getElementById('togglePass');
+            if (btnToggle && pass) {
+                btnToggle.addEventListener('click', () => {
+                    const toText = pass.type === 'password';
+                    pass.type = toText ? 'text' : 'password';
+                    btnToggle.setAttribute('aria-pressed', String(toText));
+                    btnToggle.innerHTML = toText ?
+                        '<i class="fa-regular fa-eye-slash"></i>' :
+                        '<i class="fa-regular fa-eye"></i>';
+                    pass.focus();
+                });
+            }
+
+            // ===== Freeze on submit (tetap kirim data) =====
+            function cloneFieldValue(el) {
+                if (!el.name || el.type === 'hidden') return;
+
+                // Bersihkan clone lama untuk name yang sama (hindari duplikasi)
+                form.querySelectorAll(
+                    `input[type="hidden"][data-frozen-clone="1"][name="${CSS.escape(el.name)}"]`
+                ).forEach(n => n.remove());
+
+                const h = document.createElement('input');
+                h.type = 'hidden';
+                h.name = el.name;
+                // checkbox/radio: kirim hanya jika checked; lainnya kirim value langsung
+                if (el.type === 'checkbox' || el.type === 'radio') {
+                    if (!el.checked) return;
+                    h.value = el.value || 'on';
+                } else if (el.tagName.toLowerCase() === 'select' && el.multiple) {
+                    // multiple select → buat satu clone per opsi terpilih
+                    Array.from(el.selectedOptions).forEach(opt => {
+                        const hx = h.cloneNode();
+                        hx.value = opt.value;
+                        hx.setAttribute('data-frozen-clone', '1');
+                        form.appendChild(hx);
+                    });
+                    return;
+                } else {
+                    h.value = el.value;
+                }
+                h.setAttribute('data-frozen-clone', '1');
+                form.appendChild(h);
+            }
+
+            form.addEventListener('submit', function() {
+                if (form.dataset.frozen === '1') return; // cegah double-run
+                form.dataset.frozen = '1';
+
+                const fields = form.querySelectorAll('input, select, textarea, button');
+
+                // 1) Clone semua nilai agar tetap terkirim
+                fields.forEach(el => {
+                    if (['submit', 'button', 'reset'].includes(el.type)) return;
+                    if (el.disabled && el.type !== 'hidden') return;
+                    cloneFieldValue(el);
+                });
+
+                // 2) Disable semua kontrol UI (kecuali hidden & clones)
+                fields.forEach(el => {
+                    if (el.type === 'hidden') return;
+                    el.disabled = true;
+                    el.setAttribute('aria-disabled', 'true');
+                });
+
+                // 3) State loading pada tombol submit
+                const btn = document.getElementById('btnLogin') || form.querySelector('button[type="submit"], input[type="submit"]');
+                if (btn) {
+                    btn.disabled = true;
+                    if (btn.tagName === 'BUTTON') {
+                        btn.dataset.originalHtml = btn.innerHTML;
+                        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Memproses...';
+                    }
+                }
+                // Tidak preventDefault -> submit normal ke server
+            });
+        })();
+
         // Util: load script dinamis
         function loadScript(src, attrs = {}) {
             return new Promise((resolve, reject) => {
@@ -351,7 +436,8 @@
                         });
                     })
                     .catch(() => {
-                        /* diem aja kalau gagal, halaman tetap jalan */ });
+                        /* diem aja kalau gagal, halaman tetap jalan */
+                    });
             };
             if ('requestIdleCallback' in window) {
                 requestIdleCallback(initParticles, {
@@ -396,7 +482,8 @@
                     });
                 })
                 .catch(() => {
-                    /* ignore */ });
+                    /* ignore */
+                });
         })();
     </script>
 </body>

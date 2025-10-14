@@ -124,30 +124,9 @@ $oldKet    = old('keterangan',      $d_row['keterangan']       ?? '');
                         <?php endif; ?>
                     </div>
 
-                    <!-- id_mapel -->
-                    <div class="col-md-6">
-                        <label for="id_mapel" class="form-label">Mata Pelajaran</label>
-                        <select class="form-select<?= $hasErr('id_mapel') ? ' is-invalid' : '' ?>"
-                            id="id_mapel" name="id_mapel" required aria-describedby="id_mapelFeedback">
-                            <option value="" disabled <?= $oldMapel ? '' : 'selected' ?>>— Pilih Mapel —</option>
-                            <?php foreach (($mapelList ?? []) as $m): ?>
-                                <?php
-                                $mid   = (string)($m['id_mapel'] ?? '');
-                                $mnama = (string)($m['nama_mapel'] ?? $m['nama'] ?? '');
-                                $mkode = (string)($m['kode'] ?? $m['kode_mapel'] ?? '');
-                                ?>
-                                <option value="<?= esc($mid, 'attr') ?>" <?= $oldMapel == $mid ? 'selected' : '' ?>>
-                                    <?= esc(($mkode ? "[$mkode] " : '') . $mnama) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                        <?php if ($hasErr('id_mapel')): ?>
-                            <div id="id_mapelFeedback" class="invalid-feedback d-block"><?= esc($getErr('id_mapel')) ?></div>
-                        <?php endif; ?>
-                    </div>
 
                     <!-- id_tahun_ajaran -->
-                    <div class="col-md-4">
+                    <div class="col-md-6">
                         <label for="id_tahun_ajaran" class="form-label">Tahun Ajaran</label>
                         <select class="form-select<?= $hasErr('id_tahun_ajaran') ? ' is-invalid' : '' ?>"
                             id="id_tahun_ajaran" name="id_tahun_ajaran" required aria-describedby="id_tahun_ajaranFeedback">
@@ -168,8 +147,92 @@ $oldKet    = old('keterangan',      $d_row['keterangan']       ?? '');
                         <?php endif; ?>
                     </div>
 
+                    <?php
+                    // ambil nilai lama (CI4) → array string
+                    $oldMapelArr = old('id_mapel');
+                    if (!is_array($oldMapelArr)) {
+                        // fallback dari data awal (opsional), mis. $d_row['id_mapel_list'] = [1,3,5]
+                        $oldMapelArr = isset($d_row['id_mapel_list']) && is_array($d_row['id_mapel_list'])
+                            ? array_map('strval', $d_row['id_mapel_list'])
+                            : [];
+                    }
+                    $hasErrorMapel = $hasErr('id_mapel'); // helper error milikmu
+                    ?>
+                    <!-- MAPEL (MULTI) -->
+                    <div class="col-md-12">
+                        <label class="form-label d-flex justify-content-between align-items-center">
+                            <span>Mata Pelajaran</span>
+                            <button type="button" id="btnAddMapel" class="btn btn-sm btn-outline-primary">
+                                <i class="fa fa-plus"></i> Tambah Mapel
+                            </button>
+                        </label>
+
+                        <div id="mapelContainer" class="d-flex flex-column gap-2">
+                            <?php
+                            // jika belum ada pilihan, render 1 baris kosong
+                            $rows = count($oldMapelArr) > 0 ? $oldMapelArr : [''];
+                            foreach ($rows as $i => $selId):
+                            ?>
+                                <div class="mapel-row d-flex gap-2">
+                                    <select
+                                        class="form-select<?= $hasErrorMapel ? ' is-invalid' : '' ?>"
+                                        name="id_mapel[]" required
+                                        aria-describedby="id_mapelFeedback">
+                                        <option value="" disabled <?= $selId === '' ? 'selected' : '' ?>>— Pilih Mapel —</option>
+                                        <?php foreach (($mapelList ?? []) as $m): ?>
+                                            <?php
+                                            $mid   = (string)($m['id_mapel'] ?? '');
+                                            $mnama = (string)($m['nama_mapel'] ?? $m['nama'] ?? '');
+                                            $mkode = (string)($m['kode'] ?? $m['kode_mapel'] ?? '');
+                                            $label = trim(($mkode ? "[$mkode] " : '') . $mnama);
+                                            ?>
+                                            <option value="<?= esc($mid, 'attr') ?>" <?= $selId === $mid ? 'selected' : '' ?>>
+                                                <?= esc($label) ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+
+                                    <button type="button"
+                                        class="btn btn-outline-danger btnRemoveMapel<?= $i === 0 ? ' d-none' : '' ?>"
+                                        title="Hapus baris">
+                                        <i class="fa fa-trash"></i>
+                                    </button>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+
+                        <?php if ($hasErrorMapel): ?>
+                            <div id="id_mapelFeedback" class="invalid-feedback d-block">
+                                <?= esc($getErr('id_mapel')) ?>
+                            </div>
+                        <?php else: ?>
+                            <div class="form-text">Anda bisa menambahkan lebih dari satu mapel. Duplikasi akan ditolak.</div>
+                        <?php endif; ?>
+                    </div>
+
+                    <!-- TEMPLATE ROW (disembunyikan) -->
+                    <template id="mapelRowTpl">
+                        <div class="mapel-row d-flex gap-2">
+                            <select class="form-select" name="id_mapel[]" required>
+                                <option value="" disabled selected>— Pilih Mapel —</option>
+                                <?php foreach (($mapelList ?? []) as $m): ?>
+                                    <?php
+                                    $mid   = (string)($m['id_mapel'] ?? '');
+                                    $mnama = (string)($m['nama_mapel'] ?? $m['nama'] ?? '');
+                                    $mkode = (string)($m['kode'] ?? $m['kode_mapel'] ?? '');
+                                    $label = trim(($mkode ? "[$mkode] " : '') . $mnama);
+                                    ?>
+                                    <option value="<?= esc($mid, 'attr') ?>"><?= esc($label) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <button type="button" class="btn btn-outline-danger btnRemoveMapel" title="Hapus baris">
+                                <i class="fa fa-trash"></i>
+                            </button>
+                        </div>
+                    </template>
+
                     <!-- KELAS (MULTI) -->
-                    <div class="col-md-8">
+                    <div class="col-md-12">
                         <label class="form-label d-flex justify-content-between align-items-center">
                             <span>Kelas</span>
                             <button type="button" id="btnAddKelas" class="btn btn-sm btn-outline-primary">
@@ -252,7 +315,7 @@ $oldKet    = old('keterangan',      $d_row['keterangan']       ?? '');
                     </div>
 
                     <!-- keterangan -->
-                    <div class="col-12">
+                    <div class="col-md-8">
                         <label for="keterangan" class="form-label">Keterangan (opsional)</label>
                         <textarea class="form-control<?= $hasErr('keterangan') ? ' is-invalid' : '' ?>"
                             id="keterangan" name="keterangan" rows="3"
@@ -312,6 +375,79 @@ $oldKet    = old('keterangan',      $d_row['keterangan']       ?? '');
         }
 
         syncRemoveButtons();
+    });
+
+    // mapel multi
+    document.addEventListener('DOMContentLoaded', () => {
+        const container = document.getElementById('mapelContainer');
+        const tpl = document.getElementById('mapelRowTpl');
+        const btnAdd = document.getElementById('btnAddMapel');
+
+        function getValues() {
+            return Array.from(container.querySelectorAll('select[name="id_mapel[]"]'))
+                .map(s => s.value).filter(Boolean);
+        }
+
+        function updateRemoveButtons() {
+            const rows = container.querySelectorAll('.mapel-row');
+            rows.forEach((row, idx) => {
+                const del = row.querySelector('.btnRemoveMapel');
+                if (!del) return;
+                del.classList.toggle('d-none', rows.length === 1 && idx === 0);
+            });
+        }
+
+        function hasDuplicate(val) {
+            if (!val) return false;
+            const values = getValues();
+            return values.filter(v => v === val).length > 1;
+        }
+
+        // Tambah baris
+        btnAdd?.addEventListener('click', () => {
+            const node = tpl.content.firstElementChild.cloneNode(true);
+            container.appendChild(node);
+            updateRemoveButtons();
+        });
+
+        // Hapus baris (delegated)
+        container.addEventListener('click', (e) => {
+            const btn = e.target.closest('.btnRemoveMapel');
+            if (!btn) return;
+            const row = btn.closest('.mapel-row');
+            if (!row) return;
+            if (container.querySelectorAll('.mapel-row').length <= 1) return; // minimal 1 baris
+            row.remove();
+            updateRemoveButtons();
+        });
+
+        // Cegah duplikasi saat memilih
+        container.addEventListener('change', (e) => {
+            const sel = e.target;
+            if (!(sel instanceof HTMLSelectElement)) return;
+            if (sel.name !== 'id_mapel[]') return;
+
+            // Jika duplicate, reset dan beri info
+            if (hasDuplicate(sel.value)) {
+                // reset pilihan ini
+                sel.value = '';
+                // optional: notifikasi ringan
+                if (window.Swal) {
+                    Swal.fire({
+                        toast: true,
+                        position: 'top-end',
+                        timer: 2000,
+                        showConfirmButton: false,
+                        icon: 'warning',
+                        title: 'Mapel sudah dipilih.'
+                    });
+                } else {
+                    alert('Mapel sudah dipilih.');
+                }
+            }
+        });
+
+        updateRemoveButtons();
     });
 
     (function() {

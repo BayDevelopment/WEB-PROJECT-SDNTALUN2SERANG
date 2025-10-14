@@ -30,7 +30,7 @@
                 <!-- Filter (Form GET) -->
                 <div class="col-12 col-md-9">
                     <form id="filterForm" method="get" class="row g-2 align-items-center">
-                        <div class="col-12 col-md-8">
+                        <div class="col-12 col-md-4">
                             <div class="input-group input-group-sm search-group">
                                 <span class="input-group-text">
                                     <i class="fa-solid fa-magnifying-glass"></i>
@@ -47,12 +47,24 @@
                             </div>
                         </div>
 
-                        <div class="col-6 col-md-4">
+                        <div class="col-12 col-md-4">
                             <select id="filterGender" name="gender" class="form-select form-select-sm" aria-label="Filter gender">
                                 <?php $g = $gender ?? ''; ?>
                                 <option value="" <?= $g === '' ? 'selected' : '' ?>>Semua Gender</option>
                                 <option value="L" <?= $g === 'L' ? 'selected' : '' ?>>Laki-laki</option>
                                 <option value="P" <?= $g === 'P' ? 'selected' : '' ?>>Perempuan</option>
+                            </select>
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <select id="filterTA" name="tahunajaran" class="form-select form-select-sm" aria-label="Filter Tahun Ajaran">
+                                <option value="">Semua Tahun Ajaran</option>
+                                <?php foreach ($listTA as $ta): ?>
+                                    <option value="<?= esc($ta['id_tahun_ajaran']) ?>"
+                                        <?= ($tahunajaran ?? '') == $ta['id_tahun_ajaran'] ? 'selected' : '' ?>>
+                                        <?= esc($ta['tahun']) ?> - Semester <?= esc(ucfirst($ta['semester'])) ?>
+                                        <?= $ta['is_active'] ? ' (Aktif)' : '' ?>
+                                    </option>
+                                <?php endforeach ?>
                             </select>
                         </div>
                     </form>
@@ -93,12 +105,30 @@
                                 // Gender → tag + badge
                                 $gndrRaw = (string)($d_s['gender'] ?? '');
                                 $gndr    = mb_strtolower($gndrRaw, 'UTF-8');
-                                $tag     = (str_contains($gndr, 'laki') || $gndr === 'l') ? 'Laki-laki'
+                                $tag     = (str_contains($gndr, 'laki') || $gndr === 'L') ? 'Laki-laki'
                                     : ((str_contains($gndr, 'perem') || $gndr === 'p') ? 'Perempuan'
                                         : ($gndrRaw !== '' ? $gndrRaw : '—'));
                                 // Pastikan class ini ada di CSS kamu; kalau tidak, pakai badge bootstrap standar
-                                $badgeGender = ($tag === 'Laki-laki') ? 'badge bg-primary'
-                                    : (($tag === 'Perempuan') ? 'badge bg-pink' : 'badge bg-secondary');
+                                // Jenis kelamin (enum L/P)
+                                $jkRaw = (string)($d_s['gender'] ?? $d_s['jk'] ?? $d_s['jenis_kelamin'] ?? '');
+                                $jk    = strtoupper(trim($jkRaw));
+                                // Ambil huruf pertama kalau ada string panjang (mis. "Laki-laki")
+                                if ($jk !== '' && strlen($jk) > 1) {
+                                    $jk = substr($jk, 0, 1);
+                                }
+
+                                if ($jk === 'L') {
+                                    $jkLabel = 'Laki-laki';
+                                    $badgeGender = 'badge bg-primary';
+                                } elseif ($jk === 'P') {
+                                    $jkLabel = 'Perempuan';
+                                    // pakai danger (default Bootstrap). Kalau mau pink, lihat CSS opsional di bawah.
+                                    $badgeGender = 'badge bg-danger';
+                                } else {
+                                    $jkLabel = ($jkRaw !== '' ? $jkRaw : '—');
+                                    $badgeGender = 'badge bg-secondary';
+                                }
+
 
                                 // Status enrol (dari tabel tahunan: $d_s['status'])
                                 $stRaw = mb_strtolower((string)($d_s['status'] ?? ''), 'UTF-8');
@@ -116,12 +146,12 @@
                                     <td class="text-muted"><?= $no++ ?>.</td>
                                     <td><span class="font-monospace"><?= esc($nisn) ?></span></td>
                                     <td class="fw-semibold"><?= esc($nama) ?></td>
-                                    <td><span class="<?= esc($badgeGender) ?>"><?= esc($tag) ?></span></td>
+                                    <td><span class="<?= esc($badgeGender) ?>"><?= esc($jkLabel) ?></span></td>
                                     <td><span class="<?= esc($badgeStatus) ?>"><?= esc($statusText) ?></span></td>
-                                    <td><?= esc($tMasukFmt) ?></td>
-                                    <td><?= esc($tKeluarFmt) ?></td>
+                                    <td><?= esc(format_ddmmyyyy_ke_tanggal_indo($tMasukFmt)) ?></td>
+                                    <td><?= esc(format_ddmmyyyy_ke_tanggal_indo($tKeluarFmt)) ?></td>
                                     <td>
-                                        <a href="#" class="btn btn-outline-danger"
+                                        <a href="#" class="btn btn-outline-danger btn-sm"
                                             onclick="confirmDeleteLapSiswa('<?= esc($id, 'js') ?>')"
                                             title="Hapus">
                                             <i class="fa-solid fa-trash"></i>
@@ -153,18 +183,25 @@
         const form = document.getElementById('filterForm');
         const inpQ = document.getElementById('searchSiswa');
         const selG = document.getElementById('filterGender');
+        const selTA = document.getElementById('filterTA');
 
-        // Debounce submit saat mengetik
-        let timer = null;
-        inpQ.addEventListener('input', function() {
-            clearTimeout(timer);
-            timer = setTimeout(() => form.submit(), 350);
-        });
+        let t = null;
+        const debSubmit = () => {
+            clearTimeout(t);
+            t = setTimeout(() => form.submit(), 350);
+        };
 
-        // Submit otomatis saat dropdown berubah
-        selG.addEventListener('change', function() {
-            form.submit();
-        });
+        if (inpQ) {
+            inpQ.addEventListener('input', debSubmit);
+            inpQ.addEventListener('keydown', e => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    form.submit();
+                }
+            });
+        }
+        if (selG) selG.addEventListener('change', () => form.submit());
+        if (selTA) selTA.addEventListener('change', () => form.submit());
     });
 
     function confirmDeleteLapSiswa(idOrNisn) {

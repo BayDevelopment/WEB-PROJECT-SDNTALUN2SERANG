@@ -38,6 +38,7 @@ class GuruController extends BaseController
         $this->SiswaTahunanModel = new SiswaTahunanModel();
         $this->GuruTahunanModel = new GuruTahunanModel();
     }
+
     public function index()
     {
         $data = [
@@ -47,7 +48,7 @@ class GuruController extends BaseController
 
         $db = \Config\Database::connect();
 
-        // ===== 0) Ambil user & guru login (WAJIB role=Guru) =====
+        // ===== 0) Session & Role Guard =====
         $userId = (int) (session('id_user') ?? session('user_id') ?? 0);
         if ($userId <= 0) {
             return redirect()->to(base_url('login'))
@@ -59,108 +60,204 @@ class GuruController extends BaseController
             ->where('id_user', $userId)
             ->get()->getRowArray();
 
-        if (! $user || ($user['role'] ?? '') !== 'guru') {
+        if (!$user || ($user['role'] ?? '') !== 'guru') {
             return redirect()->to(base_url('dashboard'))
                 ->with('sweet_error', 'Akses dashboard guru ditolak.');
         }
 
+        // ===== 1) Profil Guru =====
         $guru = $db->table('tb_guru')
-            ->select('id_guru, user_id')
+            ->select('id_guru, user_id, jabatan, status_active')
             ->where('user_id', $userId)
             ->get()->getRowArray();
 
-        if (! $guru) {
+        if (!$guru) {
             return redirect()->to(base_url('dashboard'))
                 ->with('sweet_error', 'Profil guru tidak ditemukan.');
         }
-        $guruId = (int) $guru['id_guru'];
+        $guruId       = (int) $guru['id_guru'];
+        $jabatanLower = mb_strtolower(trim((string)($guru['jabatan'] ?? '')), 'UTF-8');
+        $isGuru       = ($jabatanLower === 'guru');         // Guru Mapel
+        $isWali       = ($jabatanLower === 'wali kelas');   // Wali Kelas
+        $data['jabatan'] = $jabatanLower;  // bisa digunakan di view
 
-        // ===== 1) Tahun Ajaran aktif/terbaru =====
+        // ===== 2) Tahun Ajaran Aktif =====
         $taAktif = $this->TahunAjaran
-            ->groupStart()->where('is_active', 'aktif')->orWhere('is_active', 1)->groupEnd()
+            ->groupStart()->where('is_active', 'aktif')
+            ->orWhere('is_active', 1)->groupEnd()
             ->orderBy('tahun', 'DESC')->orderBy('semester', 'DESC')
             ->first();
-
-        if (! $taAktif) {
+        if (!$taAktif) {
             $taAktif = $this->TahunAjaran
                 ->orderBy('tahun', 'DESC')->orderBy('semester', 'DESC')
                 ->first();
         }
-
         $taId = (int) ($taAktif['id_tahun_ajaran'] ?? 0);
         $data['ta_aktif'] = $taAktif;
 
-        // ===== helper: ambil nama kolom status aktif yang tersedia =====
+        // Helper: memilih kolom status aktif bila ada di suatu tabel
         $pickStatusCol = function (string $table, array $candidates = ['status_active', 'is_active', 'status']) use ($db) {
             try {
-                $fields = $db->getFieldNames($table); // CI4
+                $fields = $db->getFieldNames($table);
                 foreach ($candidates as $c) {
                     if (in_array($c, $fields, true)) return $c;
                 }
             } catch (\Throwable $e) {
+                // Table tidak ada atau error akses field
             }
             return null;
         };
 
-        // ===== 2) Kelas yang diajar guru login =====
-        // 2a) Kelas sebagai Wali → deteksi nama kolom wali secara dinamis
-        $kelasWali = [];
-        try {
-            $kelasFields = $db->getFieldNames('tb_kelas');
-            $waliCandidates = [
-                'wali_guru_id',
-                'wali_id',
-                'id_guru_wali',
-                'guru_wali_id',
-                'id_wali_guru',
-                // jika skema menyimpan langsung id_guru di tb_kelas:
-                'id_guru',
-                'guru_id',
-                // fallback nama lain yang mungkin ada:
-                'wali_kelas_id',
-                'id_wali_kelas',
-                'user_id_wali',
-                'user_wali_id'
-            ];
-            $waliCol = null;
-            foreach ($waliCandidates as $cand) {
-                if (in_array($cand, $kelasFields, true)) {
-                    $waliCol = $cand;
-                    break;
+        // ===== 3) Deteksi Kelas Wali (jika jabatan wali) =====
+        $kelasWaliId = null;
+        $waliKelasNama = null;
+        if ($isWali) {
+            try {
+                $kelasFields = $db->getFieldNames('tb_kelas');
+                // Daftar kemungkinan nama kolom untuk relasi wali kelas
+                $waliCandidates = [
+                    'wali_guru_id',
+                    'wali_id',
+                    'id_guru_wali',
+                    'guru_wali_id',
+                    'id_wali_guru',
+                    'id_guru',
+                    'guru_id',
+                    'wali_kelas_id',
+                    'id_wali_kelas',
+                    'user_id_wali',
+                    'user_wali_id'
+                ];
+                $waliCol = null;
+                foreach ($waliCandidates as $cand) {
+                    if (in_array($cand, $kelasFields, true)) {
+                        $waliCol = $cand;
+                        break;
+                    }
                 }
+                if ($waliCol) {
+                    $rowWali = $db->table('tb_kelas')
+                        ->select('id_kelas, tingkat, nama_kelas')
+                        ->where($waliCol, $guruId)
+                        ->orderBy('tingkat', 'ASC')
+                        ->limit(1)
+                        ->get()->getRowArray();
+                    if ($rowWali) {
+                        $kelasWaliId = (int) $rowWali['id_kelas'];
+                        $waliKelasNama = $rowWali['nama_kelas'] ?? null;
+                        $data['waliKelasNama'] = $waliKelasNama;  // nama kelas wali, untuk ditampilkan
+                    }
+                }
+            } catch (\Throwable $e) {
+                // Abaikan jika tabel atau kolom tidak ditemukan
             }
-            if ($waliCol !== null) {
-                $kelasWali = $db->table('tb_kelas')
-                    ->select('id_kelas')
-                    ->where($waliCol, $guruId)
-                    ->get()->getResultArray();
-            }
-        } catch (\Throwable $e) {
-            $kelasWali = [];
         }
 
-        // 2b) Kelas dari penugasan guru-mapel
-        $kelasMapel = $db->table('tb_guru_mapel gm')
-            ->select('gm.id_kelas')
+        // ===== 4) Penugasan Guru Mapel (kelas-mapel yang dia ampu) =====
+        $tugas = $db->table('tb_guru_mapel gm')
+            ->select('gm.id_mapel, gm.id_kelas, m.nama AS mapel_nama, k.nama_kelas, k.tingkat')
+            ->join('tb_mapel m', 'm.id_mapel = gm.id_mapel', 'left')
+            ->join('tb_kelas k', 'k.id_kelas = gm.id_kelas', 'left')
             ->where('gm.id_guru', $guruId)
             ->where('gm.id_kelas IS NOT NULL', null, false)
-            ->groupBy('gm.id_kelas')
             ->get()->getResultArray();
 
-        // Gabungkan & unikkan
-        $kelasIds = [];
-        foreach (array_merge($kelasWali, $kelasMapel) as $row) {
-            $kid = (int) ($row['id_kelas'] ?? 0);
-            if ($kid > 0) $kelasIds[$kid] = true;
+        // Susun daftar mapel->kelas yang diajar guru ini
+        $mapelToKelas = [];   // key: id_mapel, value: array of id_kelas
+        $mapelList    = [];   // key: id_mapel, value: nama mapel
+        foreach ($tugas as $t) {
+            $mid = (int) ($t['id_mapel'] ?? 0);
+            $kid = (int) ($t['id_kelas'] ?? 0);
+            if ($mid > 0 && $kid > 0) {
+                // Kumpulkan kelas per mapel
+                if (!isset($mapelToKelas[$mid])) {
+                    $mapelToKelas[$mid] = [];
+                }
+                $mapelToKelas[$mid][$kid] = true;
+            }
+            if ($mid > 0 && !empty($t['mapel_nama'])) {
+                // Simpan nama mapel
+                $mapelList[$mid] = $t['mapel_nama'];
+            }
         }
-        $kelasIds = array_keys($kelasIds); // [int, int, ...]
 
-        // ===== 3) KPI: Guru Aktif (GLOBAL) =====
+        // ===== 5) Menentukan Scope (Cakupan) Berdasarkan Jabatan =====
+        $kelasIdsEffective = [];   // daftar id_kelas yang akan digunakan dalam query statistik
+        $selectedMapelId   = 0;
+        $selectedMapelNama = null;
+
+        if ($isGuru) {
+            // Guru Mapel: 1 mapel — bisa ke banyak kelas
+            $reqMid = (int) ($this->request->getGet('mapel_id') ?? 0);
+            if ($reqMid > 0 && isset($mapelToKelas[$reqMid])) {
+                // Jika ada parameter mapel_id yang valid, gunakan itu
+                $selectedMapelId = $reqMid;
+            } else {
+                // Jika tidak ada, pilih mapel dengan jumlah kelas terbanyak (prioritas mapel utama yang diajar)
+                $bestMid = 0;
+                $bestCnt = -1;
+                foreach ($mapelToKelas as $mid => $kelasSet) {
+                    $cnt = count($kelasSet);
+                    if ($cnt > $bestCnt) {
+                        $bestCnt = $cnt;
+                        $bestMid = (int) $mid;
+                    }
+                }
+                $selectedMapelId = $bestMid;
+            }
+            $selectedMapelNama = $mapelList[$selectedMapelId] ?? null;
+            // Kelas-kelas yang efektif (hanya kelas yang ada mapel terpilih tersebut)
+            $kelasIdsEffective = array_keys($mapelToKelas[$selectedMapelId] ?? []);
+
+            // Fallback: jika belum ada penugasan sama sekali, gunakan semua kelas yang pernah dia ampu
+            if (empty($kelasIdsEffective)) {
+                $temp = [];
+                foreach ($tugas as $t) {
+                    $kid = (int)($t['id_kelas'] ?? 0);
+                    if ($kid > 0) {
+                        $temp[$kid] = true;
+                    }
+                }
+                $kelasIdsEffective = array_keys($temp);
+            }
+        } elseif ($isWali) {
+            // Wali Kelas: 1 kelas — mencakup banyak mapel di kelas tsb
+            if ($kelasWaliId) {
+                $kelasIdsEffective = [$kelasWaliId];
+            } else {
+                // Fallback: jika tidak terdeteksi kelas walinya, gunakan semua kelas yang pernah dia ampu (meski seharusnya tidak terjadi jika data benar)
+                $temp = [];
+                foreach ($tugas as $t) {
+                    $kid = (int)($t['id_kelas'] ?? 0);
+                    if ($kid > 0) {
+                        $temp[$kid] = true;
+                    }
+                }
+                $kelasIdsEffective = array_keys($temp);
+            }
+        } else {
+            // Jika jabatan lain (atau jabatan tidak ditentukan jelas), ambil semua kelas dari penugasan sebagai cakupan
+            $temp = [];
+            foreach ($tugas as $t) {
+                $kid = (int)($t['id_kelas'] ?? 0);
+                if ($kid > 0) {
+                    $temp[$kid] = true;
+                }
+            }
+            $kelasIdsEffective = array_keys($temp);
+        }
+
+        // Simpan informasi mapel & kelas terpilih ke $data untuk digunakan di view
+        $data['mapelList']       = $mapelList;
+        $data['mapelSelected']   = $selectedMapelId;
+        $data['mapelSelectedNm'] = $selectedMapelNama;
+        $data['kelasScope']      = $kelasIdsEffective;
+
+        // ===== 6) KPI: Jumlah Guru Aktif (Global) =====
         $aktifSet = ['1', 'aktif', 'active', 'ya', 'true'];
-
-        // Coba hitung berdasarkan tb_guru_tahunan jika ada kolomnya
         $guruCount = 0;
         try {
+            // Cek di tabel tb_guru_tahunan (jika menggunakan sistem kepegawaian per tahun ajaran)
             $statusColTahunan = $pickStatusCol('tb_guru_tahunan', ['is_active', 'status_active', 'status']);
             if ($taId > 0 && $statusColTahunan) {
                 $builder = $db->table('tb_guru_tahunan')
@@ -172,10 +269,10 @@ class GuruController extends BaseController
                 $guruCount = (int) $builder->countAllResults();
             }
         } catch (\Throwable $e) {
-            // lanjut ke fallback tb_guru
+            // Jika tabel tidak ada atau query gagal
         }
-
         if ($guruCount === 0) {
+            // Jika tidak menggunakan tabel guru_tahunan, hitung dari tb_guru langsung
             $statusColGuru = $pickStatusCol('tb_guru', ['status_active', 'is_active', 'status']);
             $builder = $db->table('tb_guru');
             if ($statusColGuru) {
@@ -188,65 +285,86 @@ class GuruController extends BaseController
         }
         $data['guruCount'] = $guruCount;
 
-        // ===== 4) Siswa aktif & distribusi per kelas (HANYA kelas yang diajar) =====
+        // ===== 7) Siswa Aktif & Kelas Terpadat (dalam scope) =====
         $byClass    = [1 => 0, 2 => 0, 3 => 0, 4 => 0, 5 => 0, 6 => 0];
         $siswaTotal = 0;
-
         $kelasTerpadatJumlah  = 0;
         $kelasTerpadatNama    = null;
         $kelasTerpadatTingkat = null;
 
-        if (!empty($kelasIds)) {
+        if (!empty($kelasIdsEffective)) {
+            // Hitung jumlah siswa aktif per kelas dalam cakupan
             $rowsPerKelas = $db->table('tb_siswa s')
                 ->select('s.kelas_id, k.tingkat, k.nama_kelas, COUNT(*) AS jml')
                 ->join('tb_users u', 'u.id_user = s.user_id', 'inner')
                 ->join('tb_kelas k', 'k.id_kelas = s.kelas_id', 'left')
                 ->where('u.role', 'siswa')
                 ->where('u.is_active', 1)
-                ->whereIn('s.kelas_id', $kelasIds)
+                ->whereIn('s.kelas_id', $kelasIdsEffective)
                 ->groupBy('s.kelas_id, k.tingkat, k.nama_kelas')
                 ->get()->getResultArray();
 
             foreach ($rowsPerKelas as $r) {
-                $j = (int) ($r['jml'] ?? 0);
-                $siswaTotal += $j;
+                $jml = (int) ($r['jml'] ?? 0);
+                $siswaTotal += $jml;
 
-                $tingkat = isset($r['tingkat']) && $r['tingkat'] !== null
-                    ? (int) $r['tingkat']
-                    : (preg_match('/\d+/', (string)($r['nama_kelas'] ?? ''), $m) ? (int) $m[0] : null);
-
+                // Tentukan tingkat kelas (1-6) dari data; jika kolom tingkat null, coba ekstrak dari nama_kelas
+                $tingkat = null;
+                if (isset($r['tingkat']) && $r['tingkat'] !== null) {
+                    $tingkat = (int) $r['tingkat'];
+                } elseif (!empty($r['nama_kelas'])) {
+                    // Coba ambil angka dari nama kelas, misal "5A" -> tingkat 5
+                    if (preg_match('/\d+/', (string)$r['nama_kelas'], $m)) {
+                        $tingkat = (int) $m[0];
+                    }
+                }
                 if ($tingkat !== null && $tingkat >= 1 && $tingkat <= 6) {
-                    $byClass[$tingkat] += $j;
+                    $byClass[$tingkat] += $jml;
                 }
 
-                if ($j > $kelasTerpadatJumlah) {
-                    $kelasTerpadatJumlah  = $j;
+                // Cek apakah kelas ini terpadat sejauh ini
+                if ($jml > $kelasTerpadatJumlah) {
+                    $kelasTerpadatJumlah  = $jml;
                     $kelasTerpadatTingkat = $tingkat;
                     $kelasTerpadatNama    = $r['nama_kelas'] ?? null;
                 }
             }
         }
 
+        // Jika Wali Kelas, pastikan kelas terpadat mengacu ke kelas walinya sendiri
+        if ($isWali && $kelasWaliId) {
+            $metaWali = $db->table('tb_kelas')
+                ->select('tingkat, nama_kelas')
+                ->where('id_kelas', $kelasWaliId)
+                ->get()->getRowArray();
+            if ($metaWali) {
+                $kelasTerpadatNama    = $metaWali['nama_kelas'] ?? $kelasTerpadatNama;
+                $kelasTerpadatTingkat = $metaWali['tingkat'] ?? $kelasTerpadatTingkat;
+            }
+        }
+
         $data['byClass']             = $byClass;
         $data['siswaTotal']          = (int) $siswaTotal;
-        $data['kelasTerpadat']       = ($kelasTerpadatTingkat !== null) ? (string) $kelasTerpadatTingkat : $kelasTerpadatNama;
+        // 'kelasTerpadat' digunakan untuk menampilkan singkat (angka tingkat atau nama kelas)
+        $data['kelasTerpadat']       = ($kelasTerpadatTingkat !== null)
+            ? (string) $kelasTerpadatTingkat
+            : ($kelasTerpadatNama ?? '—');
         $data['kelasTerpadatJumlah'] = (int) $kelasTerpadatJumlah;
         $data['kelasTerpadatNama']   = $kelasTerpadatNama;
 
-        // ===== 5) Distribusi Mapel (hanya mapel yang diajar guru login) =====
+        // ===== 8) Distribusi Mapel (informasi jumlah kelas per mapel) =====
         $mapelLabels = [];
         $mapelCounts = [];
-        if (!empty($kelasIds)) {
+        if (!empty($kelasIdsEffective)) {
             $rowsMapel = $db->table('tb_guru_mapel gm')
-                ->select('m.nama, COUNT(*) AS jml', false)
+                ->select('m.nama AS mapel, COUNT(*) AS jml', false)
                 ->join('tb_mapel m', 'm.id_mapel = gm.id_mapel', 'left')
                 ->where('gm.id_guru', $guruId)
                 ->groupBy('m.nama')
                 ->orderBy('m.nama', 'ASC')
                 ->get()->getResultArray();
-
             foreach ($rowsMapel as $rm) {
-                $label = trim((string)($rm['nama'] ?? ''));
+                $label = trim((string)($rm['mapel'] ?? ''));
                 $count = (int) ($rm['jml'] ?? 0);
                 if ($label !== '') {
                     $mapelLabels[] = $label;
@@ -257,50 +375,90 @@ class GuruController extends BaseController
         $data['mapelLabels'] = $mapelLabels;
         $data['mapelCounts'] = $mapelCounts;
 
-        // ===== 6) Nilai Tertinggi (dibatasi ke kelas yang diajar + TA aktif) =====
+        // ===== 9) Nilai Tertinggi (fix: kolom sesuai skema kamu) =====
         $topNilai = 0;
-        $topNama = '—';
+        $topNama  = '—';
         $topKelas = null;
 
-        if ($taId > 0 && !empty($kelasIds)) {
-            try {
-                $rowTop = $db->table('tb_nilai_siswa ns')
-                    ->select('ns.skor, ns.siswa_id, s.full_name as siswa_nama, ns.tanggal, s.kelas_id')
+        try {
+            // List kelas dalam scope → CSV utk EXISTS
+            $kelasList = array_map('intval', $kelasIdsEffective ?: []);
+            $kelasCSV  = $kelasList ? implode(',', $kelasList) : '';
+
+            // Helper builder: TOP 1 skor tertinggi (seri -> tanggal terbaru)
+            $buildTop = function (bool $withMapel, bool $withTA, bool $withKelas) use ($db, $taId, $kelasCSV, $isGuru, $selectedMapelId) {
+                $b = $db->table('tb_nilai_siswa ns');
+
+                if ($withTA && $taId > 0) {
+                    $b->where('ns.tahun_ajaran_id', $taId);
+                }
+                if ($withMapel && $isGuru && $selectedMapelId > 0) {
+                    $b->where('ns.mapel_id', $selectedMapelId);
+                }
+                if ($withKelas && $kelasCSV !== '') {
+                    // filter kelas pakai EXISTS agar baris nilai tidak hilang
+                    $b->where("EXISTS (
+                SELECT 1 FROM tb_siswa s2
+                WHERE s2.id_siswa = ns.siswa_id
+                  AND s2.kelas_id IN ($kelasCSV)
+            )", null, false);
+                }
+
+                // ambil skor + identitas siswa
+                $b->select('ns.skor, ns.siswa_id, ns.tanggal, s.full_name, s.kelas_id')
                     ->join('tb_siswa s', 's.id_siswa = ns.siswa_id', 'left')
-                    ->where('ns.tahun_ajaran_id', $taId)
-                    ->whereIn('s.kelas_id', $kelasIds)
+                    ->where('ns.skor IS NOT NULL', null, false)
                     ->orderBy('ns.skor', 'DESC')
                     ->orderBy('ns.tanggal', 'DESC')
-                    ->limit(1)
-                    ->get()->getRowArray();
+                    ->limit(1);
 
-                if ($rowTop) {
-                    $topNilai = (float) ($rowTop['skor'] ?? 0);
-                    $topNama  = (string) ($rowTop['siswa_nama'] ?? '—');
+                return $b;
+            };
 
-                    $kidTop = (int) ($rowTop['kelas_id'] ?? 0);
-                    if ($kidTop > 0) {
-                        $metaTop = $db->table('tb_kelas')
-                            ->select('tingkat, nama_kelas')
-                            ->where('id_kelas', $kidTop)
-                            ->get()->getRowArray();
+            $rowTop = null;
+            if ($isGuru) {
+                // GURU: 1 mapel — banyak kelas
+                $rowTop = $buildTop(true,  true,  true)->get()->getRowArray();   // TA + kelas + mapel
+                if (!$rowTop) $rowTop = $buildTop(false, true,  true)->get()->getRowArray(); // TA + kelas
+                if (!$rowTop) $rowTop = $buildTop(false, true,  false)->get()->getRowArray(); // TA saja
+            } else {
+                // WALI: 1 kelas — banyak mapel
+                $rowTop = $buildTop(false, true,  true)->get()->getRowArray();   // TA + kelas
+                if (!$rowTop) $rowTop = $buildTop(false, false, true)->get()->getRowArray();  // kelas saja
+            }
+            if (!$rowTop) {
+                // fallback global bila benar-benar kosong
+                $rowTop = $buildTop(false, false, false)->get()->getRowArray();
+            }
 
-                        if ($metaTop) {
-                            $topKelas = !empty($metaTop['tingkat'])
-                                ? (string) $metaTop['tingkat']
-                                : (string) ($metaTop['nama_kelas'] ?? null);
-                        }
+            if ($rowTop) {
+                $topNilai = (float) ($rowTop['skor'] ?? 0);
+                $topNama  = trim((string)($rowTop['full_name'] ?? '')) !== '' ? $rowTop['full_name'] : '—';
+
+                // tampilkan kelas siswa pemenang (angka tingkat atau nama_kelas)
+                $kidTop = (int) ($rowTop['kelas_id'] ?? 0);
+                if ($kidTop > 0) {
+                    $metaTop = $db->table('tb_kelas')
+                        ->select('tingkat, nama_kelas')
+                        ->where('id_kelas', $kidTop)
+                        ->get()->getRowArray();
+                    if ($metaTop) {
+                        $topKelas = !empty($metaTop['tingkat'])
+                            ? (string) $metaTop['tingkat']
+                            : (string) ($metaTop['nama_kelas'] ?? '');
                     }
                 }
-            } catch (\Throwable $e) {
-                // biarkan default
             }
+        } catch (\Throwable $e) {
+            // biarkan default (0 / '—' / null)
         }
 
         $data['topNilai'] = $topNilai;
         $data['topNama']  = $topNama;
         $data['topKelas'] = $topKelas;
 
+
+        // Tampilkan view dashboard guru dengan data
         return view('pages/guru/dashboard_guru', $data);
     }
 
@@ -947,7 +1105,7 @@ class GuruController extends BaseController
         return view('pages/guru/laporan-nilai-siswa', [
             'title'         => 'Laporan Nilai Siswa | SDN Talun 2 Kota Serang',
             'sub_judul'     => 'Laporan Nilai Siswa',
-            'nav_link'      => 'Laporan Nilai',
+            'nav_link'      => 'Laporan Nilai Siswa',
             'd_nilai'       => $rows,
             'q'             => $q,
             'tahunajaran'   => $idTA,
@@ -1055,23 +1213,22 @@ class GuruController extends BaseController
         }
 
         // ===== 2) Dropdown data =====
-        // 2a) Tahun ajaran
+        // 2a) Tahun ajaran → HANYA aktif
         $optTA = $db->table('tb_tahun_ajaran')
             ->select('id_tahun_ajaran, tahun, semester, is_active')
+            ->where('is_active', 1)                    // <<— hanya TA aktif
             ->orderBy('tahun', 'DESC')->orderBy('semester', 'DESC')
             ->get()->getResultArray();
 
         $tahunajaran = (string)($req->getGet('tahunajaran') ?? '');
-        $activeTAId = null;
-        foreach ($optTA as $ta) {
-            $ia = strtolower((string)($ta['is_active'] ?? ''));
-            if (in_array($ia, ['1', 'aktif', 'active', 'ya', 'true'], true)) {
-                $activeTAId = (int)$ta['id_tahun_ajaran'];
-                break;
-            }
-        }
-        if ($tahunajaran === '' && $activeTAId !== null) $tahunajaran = (string)$activeTAId;
+        $activeTAId  = isset($optTA[0]['id_tahun_ajaran']) ? (int)$optTA[0]['id_tahun_ajaran'] : 0;
+
         $taInt = ctype_digit($tahunajaran) ? (int)$tahunajaran : 0;
+        $activeIds = array_map(fn($r) => (int)$r['id_tahun_ajaran'], $optTA);
+        if ($taInt === 0 || !in_array($taInt, $activeIds, true)) {
+            $taInt = $activeTAId ?: 0;
+        }
+        $tahunajaran = $taInt > 0 ? (string)$taInt : '';
 
         // 2b) Mapel (hanya yang diajar guru)
         $optMapel = [];
@@ -1112,10 +1269,8 @@ class GuruController extends BaseController
         }
 
         // ===== 3) Anti-duplikasi pra-tampil =====
-        // Kumpulkan siapa saja yang SUDAH punya nilai untuk kombinasi TA×Mapel×Kategori
-        // a) dari tb_nilai_siswa (by siswa_id)
         $sudahById = [];
-        if ($mapelInt > 0) { // minimal mapel dipilih
+        if ($mapelInt > 0) {
             $q = $db->table('tb_nilai_siswa')->select('siswa_id, kategori_id, tahun_ajaran_id, mapel_id');
             $q->where('mapel_id', $mapelInt);
             if ($taInt > 0)            $q->where('tahun_ajaran_id', $taInt);
@@ -1126,21 +1281,18 @@ class GuruController extends BaseController
             }
         }
 
-        // b) dari tb_nilai_tahun (fallback by nisn)
         $sudahByNisn = [];
         if ($mapelInt > 0) {
-            // asumsi kolom tb_nilai_tahun: nisn, tahun_ajaran_id, mapel_id, kategori_id
             $q2 = $db->table('tb_nilai_tahun')->select('nisn, kategori_id, tahun_ajaran_id, mapel_id');
             $q2->where('mapel_id', $mapelInt);
             if ($taInt > 0)            $q2->where('tahun_ajaran_id', $taInt);
             if ($kategoriIdFilter > 0) $q2->where('kategori_id', $kategoriIdFilter);
             foreach ($q2->get()->getResultArray() as $r) {
-                $nisn = (string)($r['nisn'] ?? '');
-                if ($nisn !== '') $sudahByNisn[$nisn] = true;
+                $nisnX = (string)($r['nisn'] ?? '');
+                if ($nisnX !== '') $sudahByNisn[$nisnX] = true;
             }
         }
 
-        // ==== Mode: hide → sembunyikan siswa jika TA×Mapel×Kategori sudah ada
         if ($mode === 'hide' && $mapelInt > 0 && $taInt > 0 && $kategoriIdFilter > 0) {
             $optSiswa = array_values(array_filter($optSiswa, function ($s) use ($sudahById, $sudahByNisn) {
                 $sid  = (int)($s['id_siswa'] ?? 0);
@@ -1151,38 +1303,31 @@ class GuruController extends BaseController
             }));
         }
 
-        // ==== Mode: prune_kategori → hilangkan kategori yang sudah dipakai oleh siswa tertentu
-        // Agar efektif, butuh ?siswa=<id> pada query (mis. dari dependent dropdown via JS)
+        // prune_kategori (opsional)
         $siswaSelected = (int)($req->getGet('siswa') ?? 0);
         if ($mode === 'prune_kategori' && $mapelInt > 0 && $taInt > 0 && $siswaSelected > 0) {
-            // ambil kategori yang sudah ada untuk siswaSelected pada TA+Mapel tsb
             $katUsed = [];
             $r1 = $db->table('tb_nilai_siswa')->select('kategori_id')
                 ->where('siswa_id', $siswaSelected)
                 ->where('tahun_ajaran_id', $taInt)
-                ->where('mapel_id', $mapelInt)
-                ->get()->getResultArray();
+                ->where('mapel_id', $mapelInt)->get()->getResultArray();
             foreach ($r1 as $r) {
                 $katUsed[(int)$r['kategori_id']] = true;
             }
 
-            // fallback tb_nilai_tahun by nisn
             $nisnSel = $db->table('tb_siswa')->select('nisn')->where('id_siswa', $siswaSelected)->get()->getRow('nisn');
             if ($nisnSel) {
                 $r2 = $db->table('tb_nilai_tahun')->select('kategori_id')
                     ->where('nisn', (string)$nisnSel)
                     ->where('tahun_ajaran_id', $taInt)
-                    ->where('mapel_id', $mapelInt)
-                    ->get()->getResultArray();
+                    ->where('mapel_id', $mapelInt)->get()->getResultArray();
                 foreach ($r2 as $r) {
                     $katUsed[(int)$r['kategori_id']] = true;
                 }
             }
 
             if (!empty($katUsed)) {
-                $optKategori = array_values(array_filter($optKategori, function ($k) use ($katUsed) {
-                    return !isset($katUsed[(int)($k['id_kategori'] ?? 0)]);
-                }));
+                $optKategori = array_values(array_filter($optKategori, fn($k) => !isset($katUsed[(int)($k['id_kategori'] ?? 0)])));
             }
         }
 
@@ -1231,11 +1376,16 @@ class GuruController extends BaseController
                 return redirect()->back()->withInput()->with('sweet_error', 'Anda tidak mengajar mapel tersebut di kelas siswa ini.');
             }
 
-            // Validasi referensi
-            $taOk  = $db->table('tb_tahun_ajaran')->where('id_tahun_ajaran', $payload['tahun_ajaran_id'])->countAllResults();
-            $katOk = $db->table('tb_kategori_nilai')->where('id_kategori', $payload['kategori_id'])->countAllResults();
+            // Validasi referensi (TA harus AKTIF)
+            $taOk  = $db->table('tb_tahun_ajaran')
+                ->where('id_tahun_ajaran', $payload['tahun_ajaran_id'])
+                ->where('is_active', 1)                 // <<— WAJIB aktif
+                ->countAllResults();
+            $katOk = $db->table('tb_kategori_nilai')
+                ->where('id_kategori', $payload['kategori_id'])
+                ->countAllResults();
             if ($taOk < 1 || $katOk < 1) {
-                return redirect()->back()->withInput()->with('sweet_error', 'Tahun ajaran / kategori tidak valid.');
+                return redirect()->back()->withInput()->with('sweet_error', 'Tahun ajaran (aktif) / kategori tidak valid.');
             }
 
             // Cegah duplikasi untuk TA×Mapel×Kategori (by siswa_id) + fallback NISN di tb_nilai_tahun
@@ -1258,7 +1408,6 @@ class GuruController extends BaseController
             }
 
             if ($dup1 > 0 || $dup2 > 0) {
-                // mode=warn → tampilkan alert yang jelas
                 $msg = 'Nilai untuk kombinasi TA×Mapel×Kategori siswa ini sudah ada.';
                 return redirect()->back()->withInput()->with('sweet_error', $msg);
             }
@@ -1287,16 +1436,17 @@ class GuruController extends BaseController
             'sub_judul'     => 'Tambah Nilai Siswa',
             'nav_link'      => 'Laporan Nilai',
             'optSiswa'      => $optSiswa,
-            'optTA'         => $optTA,
+            'optTA'         => $optTA,                 // hanya TA aktif
             'optMapel'      => $optMapel,
             'optKategori'   => $optKategori,
-            'tahunajaran'   => $tahunajaran,
+            'tahunajaran'   => $tahunajaran,           // default = TA aktif
             'kategori'      => $kategori,
             'mapel'         => $mapel,
             'mode'          => $mode,
             'allowedFields' => (new \App\Models\NilaiSiswaModel())->allowedFields ?? [],
         ]);
     }
+
 
 
     public function aksi_tambah_nilai()

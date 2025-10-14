@@ -99,21 +99,35 @@
                                 $idSiswaTh = (int)($d_s['id_siswa_tahun'] ?? 0);
                                 $nisn      = (string)($d_s['nisn'] ?? '');
                                 $nama      = (string)($d_s['full_name'] ?? $d_s['nama_lengkap'] ?? '');
-                                $gndrRaw   = (string)($d_s['gender'] ?? '');
-                                $gndr      = mb_strtolower($gndrRaw, 'UTF-8');
 
-                                $tag = (str_contains($gndr, 'laki') || $gndr === 'l') ? 'Laki-laki'
-                                    : ((str_contains($gndr, 'perem') || $gndr === 'p') ? 'Perempuan'
-                                        : ($gndrRaw !== '' ? $gndrRaw : '—'));
+                                // === Normalisasi Jenis Kelamin ===
+                                $gndrRaw = (string)($d_s['gender'] ?? '');
+                                $gndrLow = mb_strtolower(trim($gndrRaw), 'UTF-8');
 
-                                $badgeGender = ($tag === 'Laki-laki') ? 'badge bg-primary'
-                                    : (($tag === 'Perempuan') ? 'badge bg-pink' : 'badge bg-secondary');
+                                $isL = preg_match('/^(l|laki|lk|male|m)/i', $gndrRaw) || str_contains($gndrLow, 'laki');
+                                $isP = preg_match('/^(p|perem|pr|wanita|female|f)/i', $gndrRaw) || str_contains($gndrLow, 'perem');
 
+                                if ($isL) {
+                                    $genderShort = 'L';
+                                    $genderFull  = 'Laki-laki';
+                                    $badgeGender = 'badge rounded-pill bg-primary';
+                                } elseif ($isP) {
+                                    $genderShort = 'P';
+                                    $genderFull  = 'Perempuan';
+                                    $badgeGender = 'badge rounded-pill bg-danger';
+                                } else {
+                                    $genderShort = '—';
+                                    $genderFull  = ($gndrRaw !== '' ? $gndrRaw : 'Tidak diketahui');
+                                    $badgeGender = 'badge rounded-pill bg-secondary';
+                                }
+
+                                // === Status Enrol ===
                                 $stRaw = mb_strtolower((string)($d_s['status'] ?? ''), 'UTF-8');
                                 $isEnrolActive = in_array($stRaw, ['1', 'aktif', 'active', 'ya', 'true'], true);
                                 $statusText  = $isEnrolActive ? 'Aktif' : 'Nonaktif';
                                 $badgeStatus = $isEnrolActive ? 'badge bg-success' : 'badge bg-secondary';
 
+                                // === Tanggal ===
                                 $tMasukFmt  = $fmtDMY($d_s['tanggal_masuk']  ?? null);
                                 $tKeluarFmt = $fmtDMY($d_s['tanggal_keluar'] ?? null);
                             ?>
@@ -121,21 +135,27 @@
                                     <td class="text-muted"><?= $no++ ?>.</td>
                                     <td><span class="font-monospace"><?= esc($nisn) ?></span></td>
                                     <td class="fw-semibold"><?= esc($nama) ?></td>
-                                    <td><span class="<?= esc($badgeGender) ?>"><?= esc($tag) ?></span></td>
+                                    <td>
+                                        <span class="<?= esc($badgeGender) ?>"
+                                            title="<?= esc($genderFull) ?>"
+                                            aria-label="Jenis kelamin: <?= esc($genderFull) ?>">
+                                            <?= esc($genderFull) ?>
+                                        </span>
+                                    </td>
                                     <td><span class="<?= esc($badgeStatus) ?>"><?= esc($statusText) ?></span></td>
-                                    <td><?= esc($tMasukFmt) ?></td>
-                                    <td><?= esc($tKeluarFmt) ?></td>
+                                    <td><?= esc(format_ddmmyyyy_ke_tanggal_indo($tMasukFmt)) ?></td>
+                                    <td><?= esc(format_ddmmyyyy_ke_tanggal_indo($tKeluarFmt)) ?></td>
                                     <td class="text-center">
-                                        <!-- aksi sesuai kebutuhan: detail / hapus -->
-                                        <a href="<?= base_url('guru/detail-siswa/' . urlencode($nisn)) ?>" class="btn btn-outline-primary btn-sm" title="Detail">
+                                        <a href="<?= base_url('guru/detail-siswa/' . urlencode($nisn)) ?>"
+                                            class="btn btn-outline-primary btn-sm" title="Detail">
                                             <i class="fa-regular fa-eye"></i>
                                         </a>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>
-
                     </table>
+
                 </div>
             <?php else: ?>
                 <!-- Empty state -->

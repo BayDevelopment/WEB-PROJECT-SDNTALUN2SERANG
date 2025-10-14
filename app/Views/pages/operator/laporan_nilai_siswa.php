@@ -6,6 +6,174 @@
     table.dataTable th.dt-nowrap {
         white-space: nowrap;
     }
+
+    /* Zebra rows + hover */
+    #tableDataNilai tbody tr:nth-child(odd) {
+        background: #f8fafc;
+    }
+
+    /* ganjil */
+    #tableDataNilai tbody tr:nth-child(even) {
+        background: #ffffff;
+    }
+
+    /* genap  */
+    #tableDataNilai tbody tr:hover {
+        background: #eef6ff;
+        transition: background .15s ease;
+    }
+
+    /* Chip gender */
+    .gender-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: .4rem;
+        padding: .25rem .6rem;
+        border-radius: 999px;
+        font-weight: 600;
+        font-size: .75rem;
+        border: 1px solid transparent;
+        line-height: 1;
+    }
+
+    .gender-male {
+        color: #0d6efd;
+        background: #e7f1ff;
+        border-color: #cfe2ff;
+        /* biru lembut */
+    }
+
+    .gender-female {
+        color: #dc3545;
+        background: #fdecef;
+        border-color: #f5c2c7;
+        /* merah lembut */
+    }
+
+    .gender-unknown {
+        color: #6c757d;
+        background: #f2f4f6;
+        border-color: #e5e7eb;
+    }
+
+    /* Kolom nomor tipis & rata tengah */
+    #tableDataNilai th.w-40px,
+    #tableDataNilai td.w-40px {
+        width: 40px;
+        text-align: center;
+    }
+
+    /* Zebra & hover */
+    #tableDataNilai.table-hover tbody tr:hover {
+        background: #eef6ff;
+        transition: background .15s ease;
+    }
+
+    #tableDataNilai tbody tr:nth-child(odd) {
+        background: #fbfdff;
+    }
+
+    #tableDataNilai tbody tr:nth-child(even) {
+        background: #ffffff;
+    }
+
+    /* Badge nomor ganjil-genap */
+    .gg-badge {
+        display: inline-block;
+        min-width: 22px;
+        padding: .15rem .5rem;
+        border-radius: 999px;
+        font-size: .75rem;
+        font-weight: 700;
+        line-height: 1;
+        border: 1px solid transparent;
+        text-align: center;
+        user-select: none;
+    }
+
+    .gg-odd {
+        color: #5b21b6;
+        background: #f3e8ff;
+        border-color: #e9d5ff;
+    }
+
+    /* violet lembut */
+    .gg-even {
+        color: #115e59;
+        background: #ccfbf1;
+        border-color: #99f6e4;
+    }
+
+    /* teal lembut   */
+
+    /* Chip gender */
+    .gender-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: .4rem;
+        padding: .25rem .6rem;
+        border-radius: 999px;
+        font-weight: 600;
+        font-size: .75rem;
+        border: 1px solid transparent;
+        line-height: 1;
+    }
+
+    .gender-male {
+        color: #0d6efd;
+        background: #e7f1ff;
+        border-color: #cfe2ff;
+    }
+
+    .gender-female {
+        color: #dc3545;
+        background: #fdecef;
+        border-color: #f5c2c7;
+    }
+
+    .gender-unknown {
+        color: #6c757d;
+        background: #f2f4f6;
+        border-color: #e5e7eb;
+    }
+
+    /* Kolom nomor sempit & center */
+    #tableDataNilai th.w-40px,
+    #tableDataNilai td.w-40px {
+        width: 40px;
+        text-align: center;
+    }
+
+    /* Chip gender */
+    .gender-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: .4rem;
+        padding: .25rem .6rem;
+        border-radius: 999px;
+        font-weight: 600;
+        font-size: .75rem;
+        border: 1px solid transparent;
+        line-height: 1;
+    }
+
+    .gender-male {
+        color: #0d6efd;
+        background: #e7f1ff;
+        border-color: #cfe2ff;
+    }
+
+    .gender-female {
+        color: #dc3545;
+        background: #fdecef;
+        border-color: #f5c2c7;
+    }
+
+    .gender-unknown {
+        color: #6c757d;
+        background: #f2f4f6;
+        border-color: #e5e7eb;
+    }
 </style>
 <div class="container-fluid px-4 page-section">
     <div class="d-sm-flex align-items-center justify-content-between mb-3">
@@ -26,44 +194,68 @@
                 <div class="col-12 col-md-9">
                     <form id="filterForm" method="get" role="search" class="row g-2 align-items-center">
                         <!-- Cari nama / NISN -->
-                        <div class="col-12 col-md-6">
-                            <div class="input-group input-group-sm search-group">
-                                <span class="input-group-text">
-                                    <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-                                </span>
-                                <input
-                                    id="searchSiswa"
-                                    type="text"
-                                    name="q"
-                                    value="<?= esc($q ?? '') ?>"
-                                    class="form-control"
-                                    placeholder="Cari nama atau NISN..."
-                                    aria-label="Pencarian nama atau NISN"
-                                    autocomplete="off">
+                        <div class="col-12 col-md-4">
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
+                                <input id="searchSiswa" type="text" name="q" value="<?= esc($q ?? '') ?>"
+                                    class="form-control" placeholder="Cari nama atau NISN..." autocomplete="off">
                             </div>
                         </div>
 
-                        <!-- Tahun Ajaran (id) -->
+                        <!-- Tahun Ajaran -->
                         <div class="col-6 col-md-3">
-                            <input
-                                type="text"
-                                name="tahunajaran"
-                                value="<?= esc($tahunajaran ?? '') ?>"
-                                class="form-control form-control-sm"
-                                placeholder="Tahun Ajaran"
-                                aria-label="Filter Tahun Ajaran (id)">
+                            <select id="filterTA" name="tahunajaran" class="form-select form-select-sm">
+                                <option value="">Semua Tahun Ajaran</option>
+                                <?php foreach (($listTA ?? []) as $ta): ?>
+                                    <option value="<?= esc($ta['id_tahun_ajaran']) ?>"
+                                        <?= (string)($tahunajaran ?? '') === (string)$ta['id_tahun_ajaran'] ? 'selected' : '' ?>>
+                                        <?= esc($ta['tahun']) ?> - Semester <?= esc(ucfirst($ta['semester'])) ?>
+                                        <?= !empty($ta['is_active']) ? ' (Aktif)' : '' ?>
+                                    </option>
+                                <?php endforeach ?>
+                            </select>
                         </div>
 
-                        <!-- Kategori nilai (kode: UTS/UAS) -->
-                        <div class="col-6 col-md-3">
+                        <!-- Kategori nilai (UTS/UAS) dari DB -->
+                        <div class="col-6 col-md-2">
                             <?php $kat = strtoupper((string)($kategori ?? '')); ?>
-                            <select name="kategori" class="form-select form-select-sm" aria-label="Filter kategori nilai">
-                                <option value="" <?= $kat === ''   ? 'selected' : '' ?>>Semua Kategori</option>
-                                <option value="UTS" <?= $kat === 'UTS' ? 'selected' : '' ?>>UTS</option>
-                                <option value="UAS" <?= $kat === 'UAS' ? 'selected' : '' ?>>UAS</option>
+                            <select id="filterKat" name="kategori" class="form-select form-select-sm">
+                                <option value="" <?= $kat === '' ? 'selected' : '' ?>>Semua</option>
+                                <?php foreach (($listKat ?? []) as $k):
+                                    $kode = strtoupper($k['kode'] ?? '');
+                                    $nama = trim((string)($k['nama'] ?? ''));
+                                ?>
+                                    <option value="<?= esc($kode) ?>" <?= $kat === $kode ? 'selected' : '' ?>>
+                                        <?= esc($nama !== '' ? $nama : $kode) ?>
+                                    </option>
+                                <?php endforeach ?>
+                            </select>
+                        </div>
+
+                        <!-- Mapel -->
+                        <div class="col-6 col-md-3">
+                            <select id="filterMapel" name="mapel" class="form-select form-select-sm">
+                                <option value="">Semua Mapel</option>
+                                <?php foreach (($listMapel ?? []) as $m): ?>
+                                    <option value="<?= esc($m['id_mapel']) ?>"
+                                        <?= (string)($mapel ?? '') === (string)$m['id_mapel'] ? 'selected' : '' ?>>
+                                        <?= esc($m['nama']) ?><?= !empty($m['kode']) ? ' [' . esc($m['kode']) . ']' : '' ?>
+                                    </option>
+                                <?php endforeach ?>
                             </select>
                         </div>
                     </form>
+
+                    <script>
+                        // Auto-submit saat dropdown berubah (opsional)
+                        ['filterTA', 'filterKat', 'filterMapel'].forEach(id => {
+                            const el = document.getElementById(id);
+                            if (el) {
+                                el.addEventListener('change', () => document.getElementById('filterForm').submit());
+                            }
+                        });
+                    </script>
+
                 </div>
 
                 <!-- Aksi kanan -->
@@ -80,7 +272,7 @@
             <!-- Tabel -->
             <?php if (!empty($d_nilai)): ?>
                 <div class="table-responsive">
-                    <table id="tableDataNilai" class="table table-modern align-middle">
+                    <table id="tableDataNilai" class="table table-modern table-hover align-middle text-capitalize">
                         <thead>
                             <tr>
                                 <th class="w-40px">No</th>
@@ -101,52 +293,72 @@
                         <tbody>
                             <?php
                             $no = 1;
-                            $fmtDMY = function ($val): string {
-                                $t = _indo_parse_time($val, 'Asia/Jakarta'); // helper milikmu
-                                return $t ? $t->format('d/m/Y') : '—';
-                            };
-
                             foreach ($d_nilai as $row):
-                                $nisn       = (string)($row['nisn'] ?? '');
-                                $nama       = (string)($row['full_name'] ?? $row['nama_lengkap'] ?? '');
-                                $genderRaw  = (string)($row['gender'] ?? '');
-                                $gender     = $genderRaw !== '' ? $genderRaw : '—';
+                                $nisn      = (string)($row['nisn'] ?? $row['siswa_nisn'] ?? '');
+                                $nama      = (string)($row['full_name'] ?? $row['siswa_nama'] ?? $row['nama_lengkap'] ?? '');
+                                $genderRaw = (string)($row['gender'] ?? $row['siswa_gender'] ?? '');
+                                $gender    = $genderRaw !== '' ? strtoupper($genderRaw[0]) : ''; // L/P/''
 
-                                $taTahun    = (string)($row['tahun_ajaran'] ?? '');   // ta.tahun AS tahun_ajaran
-                                $taSmtr     = (string)($row['semester'] ?? '');
-                                $mapelNama  = (string)($row['nama'] ?? '');           // m.nama
-                                $katKode    = (string)($row['kategori_kode'] ?? '');  // k.kode
-                                $skor       = (string)($row['skor'] ?? '');
-                                $tgl        = $fmtDMY($row['tanggal'] ?? null);
-                                $ket        = (string)($row['keterangan'] ?? '');
+                                $taTahun   = (string)($row['tahun_ajaran'] ?? $row['ta_tahun'] ?? '');
+                                $taSmtr    = (string)($row['semester'] ?? $row['ta_semester'] ?? '');
+                                $mapelNama = (string)($row['nama'] ?? $row['mapel_nama'] ?? '');
+                                $katKode   = (string)($row['kategori_kode'] ?? '');
+                                $skor      = (string)($row['skor'] ?? '');
+                                $ket       = (string)($row['keterangan'] ?? $row['keterangan_nilai'] ?? '');
+
+                                $tglRaw    = $row['tanggal_nilai'] ?? $row['tanggal'] ?? null;
+                                $tglTampil = '—';
+                                if (!empty($tglRaw) && $tglRaw !== '0000-00-00' && $tglRaw !== '0000-00-00 00:00:00') {
+                                    $ts = strtotime($tglRaw);
+                                    if ($ts !== false) $tglTampil = date('d/m/Y', $ts);
+                                }
+
+                                $idNilai = (int)($row['id_nilai'] ?? 0);
+                                $qs = http_build_query([
+                                    'q'           => $q           ?? '',
+                                    'tahunajaran' => $tahunajaran ?? '',
+                                    'kategori'    => $kategori    ?? '',
+                                    'mapel'       => $mapel       ?? '',
+                                ]);
+                                $hrefEdit = base_url('operator/laporan/edit-nilai/' . $idNilai) . ($qs ? ('?' . $qs) : '');
                             ?>
                                 <tr>
-                                    <td class="text-muted"><?= $no++ ?>.</td>
+                                    <!-- No: ganjil btn-outline-secondary, genap btn-outline-primary -->
+                                    <td class="w-40px text-center">
+                                        <span class="<?= ($no % 2 ? 'btn btn-sm btn-outline-secondary' : 'btn btn-sm btn-outline-primary') ?> rounded-pill px-2 py-0">
+                                            <?= $no ?>
+                                        </span>
+                                    </td>
+
                                     <td><span class="font-monospace"><?= esc($nisn) ?></span></td>
                                     <td class="fw-semibold"><?= esc($nama) ?></td>
-                                    <td><?= esc($gender) ?></td>
+
+                                    <!-- Gender chip -->
+                                    <td>
+                                        <?php if ($gender === 'L'): ?>
+                                            <span class="gender-chip gender-male" title="Laki-laki">
+                                                <i class="fa-solid fa-person" aria-hidden="true"></i> Laki-laki
+                                            </span>
+                                        <?php elseif ($gender === 'P'): ?>
+                                            <span class="gender-chip gender-female" title="Perempuan">
+                                                <i class="fa-solid fa-person-dress" aria-hidden="true"></i> Perempuan
+                                            </span>
+                                        <?php else: ?>
+                                            <span class="gender-chip gender-unknown" title="Tidak diketahui">—</span>
+                                        <?php endif; ?>
+                                    </td>
+
                                     <td><?= esc($taTahun) ?></td>
                                     <td><?= esc($taSmtr) ?></td>
                                     <td><?= esc($mapelNama) ?></td>
                                     <td><?= esc($katKode) ?></td>
                                     <td><?= esc($skor) ?></td>
-                                    <td><?= esc(tgl_indo($tgl, true)) ?></td>
+                                    <td><?= esc(format_ddmmyyyy_ke_tanggal_indo($tglTampil)) ?></td>
                                     <td><?= esc($ket) ?></td>
                                     <td>
-                                        <?php
-                                        $qs = http_build_query([
-                                            'q'           => $q           ?? '',
-                                            'tahunajaran' => $tahunajaran ?? '',
-                                            'kategori'    => $kategori    ?? '',
-                                            'mapel'       => $mapel       ?? '',
-                                        ]);
-                                        $hrefEdit = base_url('operator/laporan/edit-nilai/' . (int)($row['id_nilai'] ?? 0)) . ($qs ? ('?' . $qs) : '');
-                                        ?>
                                         <a href="<?= $hrefEdit ?>" class="btn btn-primary btn-sm" title="Edit">
                                             <i class="fa-solid fa-pen-to-square"></i>
                                         </a>
-
-                                        <?php $idNilai = (int)($row['id_nilai'] ?? 0); ?>
                                         <a href="#"
                                             class="btn btn-outline-danger btn-sm"
                                             title="Hapus baris nilai ini"
@@ -155,10 +367,12 @@
                                         </a>
                                     </td>
                                 </tr>
-                            <?php endforeach; ?>
+                            <?php
+                                $no++; // increment di akhir loop
+                            endforeach; ?>
                         </tbody>
-
                     </table>
+
                 </div>
             <?php else: ?>
                 <!-- Empty state -->
@@ -177,69 +391,26 @@
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         const form = document.getElementById('filterForm');
-        if (!form) return;
+        const inpQ = document.getElementById('searchSiswa');
+        const selects = ['filterGender', 'filterTA', 'filterKat', 'filterMapel']
+            .map(id => document.getElementById(id)).filter(Boolean);
 
-        const inpQ = document.getElementById('searchSiswa'); // q
-        const selects = form.querySelectorAll('select'); // contoh: kategori
-        const inputs = form.querySelectorAll('input[type="text"], input[type="number"]'); // tahunajaran, mapel, dsb.
+        let t;
+        const submitNow = () => form.requestSubmit ? form.requestSubmit() : form.submit();
 
-        let typingTimer = null;
-        let isSubmitting = false;
-
-        const submitFormSafe = () => {
-            if (isSubmitting) return;
-            isSubmitting = true;
-            // requestSubmit lebih aman (respect type="submit"), fallback ke submit()
-            if (typeof form.requestSubmit === 'function') form.requestSubmit();
-            else form.submit();
-        };
-
-        const debounce = (fn, delay = 350) => {
-            return (...args) => {
-                clearTimeout(typingTimer);
-                typingTimer = setTimeout(() => fn.apply(null, args), delay);
-            };
-        };
-
-        // 1) Debounce saat mengetik di kolom pencarian
         if (inpQ) {
-            inpQ.addEventListener('input', debounce(() => submitFormSafe(), 350));
-            // Enter = submit instan (tanpa debounce)
-            inpQ.addEventListener('keydown', (e) => {
+            inpQ.addEventListener('input', () => {
+                clearTimeout(t);
+                t = setTimeout(submitNow, 350);
+            });
+            inpQ.addEventListener('keydown', e => {
                 if (e.key === 'Enter') {
                     e.preventDefault();
-                    submitFormSafe();
+                    submitNow();
                 }
             });
         }
-
-        // 2) Submit otomatis saat select berubah (mis. kategori)
-        selects.forEach((sel) => {
-            sel.addEventListener('change', () => submitFormSafe(), {
-                passive: true
-            });
-        });
-
-        // 3) Untuk input filter selain pencarian (ID TA, ID Mapel), pakai debounce ringan
-        inputs.forEach((inp) => {
-            if (inp === inpQ) return; // sudah di-handle di atas
-            // Ketik -> debounce submit; blur -> submit instan
-            inp.addEventListener('input', debounce(() => submitFormSafe(), 500));
-            inp.addEventListener('change', () => submitFormSafe(), {
-                passive: true
-            });
-            inp.addEventListener('blur', () => submitFormSafe(), {
-                passive: true
-            });
-        });
-
-        // 4) Cegah submit ganda: reset flag saat halaman benar-benar mulai unload
-        window.addEventListener('beforeunload', () => {
-            clearTimeout(typingTimer);
-            isSubmitting = false;
-        }, {
-            passive: true
-        });
+        selects.forEach(sel => sel.addEventListener('change', submitNow));
     });
 
 

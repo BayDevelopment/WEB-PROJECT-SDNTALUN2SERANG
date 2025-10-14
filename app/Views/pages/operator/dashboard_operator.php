@@ -245,141 +245,197 @@
                 </div>
             </div>
         </div>
+
     </div>
 
     <!-- Charts -->
     <div class="row g-3 g-md-4">
-        <!-- Chart 1: Distribusi Mapel -->
+        <!-- Chart 1: Distribusi Mata Pelajaran -->
         <div class="col-xl-6">
             <div class="card-modern card mb-4">
                 <div class="card-header">
-                    <i class="fas fa-layer-group me-2"></i> Distribusi Mapel (tb_mapel)
+                    <i class="fas fa-layer-group me-2"></i> Distribusi Mata Pelajaran
                 </div>
-                <div class="card-body">
-                    <canvas id="ChartMapelBar"></canvas>
+                <div class="card-body" style="min-height:340px">
+                    <canvas id="ChartMapelBar" data-chart="bar" aria-label="Distribusi Mata Pelajaran" role="img"></canvas>
                     <?php if (empty($mapelLabels ?? [])): ?>
-                        <div class="text-muted small mt-2">Belum ada data mapel untuk ditampilkan.</div>
+                        <div class="text-muted small mt-2">Belum ada data mata pelajaran untuk ditampilkan.</div>
                     <?php endif; ?>
                 </div>
             </div>
         </div>
 
-        <!-- Chart 2: Distribusi Siswa per Kelas -->
+        <!-- Chart 2: Siswa Aktif per Kelas -->
         <div class="col-xl-6">
             <div class="card-modern card mb-4">
                 <div class="card-header">
-                    <i class="fas fa-chart-bar me-2"></i> Distribusi Siswa per Kelas
+                    <i class="fas fa-chart-bar me-2"></i> Siswa Aktif per Kelas
                 </div>
-                <div class="card-body">
-                    <canvas id="ChartSiswaBar"></canvas>
+                <div class="card-body" style="min-height:280px">
+                    <canvas id="ChartSiswaBar" data-chart="bar" aria-label="Siswa Aktif per Kelas" role="img"></canvas>
+                    <?php if (empty($byClass ?? [])): ?>
+                        <div class="text-muted small mt-2">Belum ada data siswa aktif per kelas.</div>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
     </div>
+
 </div>
+<?= $this->endSection() ?>
+<?= $this->section('scripts') ?>
 <script>
-    // Data PHP -> JS
-    const mapelLabels = <?= json_encode($mapelLabels ?? [], JSON_UNESCAPED_UNICODE) ?>;
-    const mapelCounts = <?= json_encode($mapelCounts ?? [], JSON_NUMERIC_CHECK) ?>;
-    const kelasLabels = ['Kelas 1', 'Kelas 2', 'Kelas 3', 'Kelas 4', 'Kelas 5', 'Kelas 6'];
-    const kelasCounts = [
-        <?= (int)($byClass[1] ?? 0) ?>,
-        <?= (int)($byClass[2] ?? 0) ?>,
-        <?= (int)($byClass[3] ?? 0) ?>,
-        <?= (int)($byClass[4] ?? 0) ?>,
-        <?= (int)($byClass[5] ?? 0) ?>,
-        <?= (int)($byClass[6] ?? 0) ?>,
-    ];
+    (function() {
+        const mapelLabels = <?= json_encode(array_values($mapelLabels ?? []), JSON_UNESCAPED_UNICODE) ?>;
+        const mapelCounts = <?= json_encode(array_values($mapelCounts ?? []), JSON_NUMERIC_CHECK) ?>;
+        const byClass = <?= json_encode($byClass ?? [], JSON_NUMERIC_CHECK) ?>;
 
-    // Tunggu Chart.js benar-benar tersedia
-    (function bootCharts(attempt = 0) {
-        if (!window.Chart) {
-            if (attempt < 60) return setTimeout(() => bootCharts(attempt + 1), 100); // max +/-6 detik
-            console.error('Chart.js belum termuat. Cek CDN / file lokal / CSP.');
-            return;
+        const kelasOrder = [1, 2, 3, 4, 5, 6];
+        const kelasLabels = kelasOrder.map(n => 'Kelas ' + n);
+        const kelasCounts = kelasOrder.map(n => Number(byClass?.[n] ?? 0));
+
+        function whenChartReady(fn) {
+            if (window.Chart) return fn();
+            const id = 'chartjs-4.4.4-cdn';
+            if (!document.getElementById(id)) {
+                const s = document.createElement('script');
+                s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js';
+                s.id = id;
+                s.async = true;
+                s.onload = fn;
+                document.head.appendChild(s);
+            } else {
+                document.getElementById(id).addEventListener('load', fn, {
+                    once: true
+                });
+            }
         }
 
-        // Global style
-        Chart.defaults.font.family = `'Inter',system-ui,-apple-system,Segoe UI,Roboto,'Helvetica Neue',Arial,'Noto Sans'`;
-        Chart.defaults.color = '#6b7280';
-        Chart.defaults.plugins.legend.display = false;
-        Chart.defaults.plugins.tooltip.backgroundColor = 'rgba(15,23,42,.92)';
-        Chart.defaults.plugins.tooltip.padding = 10;
-        Chart.defaults.plugins.tooltip.cornerRadius = 10;
+        // Pecah label panjang biar muat (maks 10 char per baris)
+        function wrapLabel(label, max = 10) {
+            const words = String(label).split(/\s+/);
+            const lines = [];
+            let line = '';
+            for (const w of words) {
+                if ((line + ' ' + w).trim().length > max) {
+                    if (line) lines.push(line);
+                    line = w;
+                } else {
+                    line = (line ? line + ' ' : '') + w;
+                }
+            }
+            if (line) lines.push(line);
+            return lines.join('\n'); // Chart.js akan buat baris baru dengan \n
+        }
 
-        const ACCENTS = ['#0d6efd', '#3d8bfd', '#0b5ed7', '#6ea8fe', '#9ec5fe', '#cfe2ff', '#74a5ff'];
+        function initCharts() {
+            const ctxMapel = document.getElementById('ChartMapelBar')?.getContext('2d');
+            const ctxSiswa = document.getElementById('ChartSiswaBar')?.getContext('2d');
 
-        // Chart 1: Mapel
-        const elMapel = document.getElementById('ChartMapelBar');
-        if (elMapel && mapelLabels.length) {
-            new Chart(elMapel.getContext('2d'), {
-                type: 'bar',
-                data: {
-                    labels: mapelLabels,
-                    datasets: [{
-                        label: 'Jumlah',
-                        data: mapelCounts,
-                        backgroundColor: mapelLabels.map((_, i) => ACCENTS[i % ACCENTS.length]),
-                        borderWidth: 0,
-                        borderRadius: 12,
-                        maxBarThickness: 44
-                    }]
+            const baseOptions = {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: (ctx) => ` ${ctx.parsed.y ?? ctx.parsed}`
+                        }
+                    }
                 },
-                options: {
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            grid: {
-                                color: 'rgba(233,236,239,.8)'
+                scales: {
+                    x: {
+                        grid: {
+                            display: false
+                        },
+                        ticks: {
+                            autoSkip: false, // << kunci
+                            font: {
+                                size: 10
+                            }, // kecilkan biar muat
+                            maxRotation: 60,
+                            minRotation: 0,
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        precision: 0
+                    }
+                }
+            };
+
+            // Distribusi Mapel — tampilkan SEMUA label
+            if (ctxMapel && mapelLabels.length && mapelCounts.length) {
+                new Chart(ctxMapel, {
+                    type: 'bar',
+                    data: {
+                        labels: mapelLabels.map(l => wrapLabel(l, 12)),
+                        datasets: [{
+                            label: 'Jumlah',
+                            data: mapelCounts.map(Number),
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        ...baseOptions,
+                        scales: {
+                            ...baseOptions.scales,
+                            x: {
+                                ...baseOptions.scales.x,
+                                ticks: {
+                                    ...baseOptions.scales.x.ticks,
+                                    callback: function(value, index) {
+                                        return this.getLabelForValue(value);
+                                    }
+                                }
                             },
-                            ticks: {
-                                precision: 0
-                            }
-                        },
-                        x: {
-                            grid: {
-                                display: false
+                            y: {
+                                ...baseOptions.scales.y,
+                                title: {
+                                    display: true,
+                                    text: 'Jumlah'
+                                }
                             }
                         }
                     }
-                }
-            });
+                });
+            }
+
+            // Siswa Aktif per Kelas
+            if (ctxSiswa) {
+                new Chart(ctxSiswa, {
+                    type: 'bar',
+                    data: {
+                        labels: kelasLabels,
+                        datasets: [{
+                            label: 'Siswa Aktif',
+                            data: kelasCounts,
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        ...baseOptions,
+                        scales: {
+                            ...baseOptions.scales,
+                            y: {
+                                ...baseOptions.scales.y,
+                                title: {
+                                    display: true,
+                                    text: 'Jumlah Siswa'
+                                }
+                            }
+                        }
+                    }
+                });
+            }
         }
 
-        // Chart 2: Siswa per Kelas
-        const elKelas = document.getElementById('ChartSiswaBar');
-        if (elKelas) {
-            new Chart(elKelas.getContext('2d'), {
-                type: 'bar',
-                data: {
-                    labels: kelasLabels,
-                    datasets: [{
-                        label: 'Jumlah Siswa',
-                        data: kelasCounts,
-                        backgroundColor: kelasLabels.map((_, i) => ACCENTS[i % ACCENTS.length]),
-                        borderWidth: 0,
-                        borderRadius: 12,
-                        maxBarThickness: 44
-                    }]
-                },
-                options: {
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            grid: {
-                                color: 'rgba(233,236,239,.8)'
-                            }
-                        },
-                        x: {
-                            grid: {
-                                display: false
-                            }
-                        }
-                    }
-                }
-            });
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => whenChartReady(initCharts));
+        } else {
+            whenChartReady(initCharts);
         }
     })();
 </script>

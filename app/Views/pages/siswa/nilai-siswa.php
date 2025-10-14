@@ -177,9 +177,6 @@
                 <li class="breadcrumb-item active">Laporan Nilai</li>
             </ol>
         </div>
-        <div class="text-muted small">
-            Data ini otomatis dibatasi untuk akun yang sedang login.
-        </div>
     </div>
 
     <?php
@@ -228,7 +225,7 @@
                             <span class="kv-v">
                                 <?= esc($me['birth_place'] ?? '—') ?>
                                 <?= (!empty($me['birth_place']) && !empty($me['birth_date'])) ? ' / ' : '' ?>
-                                <?= esc($me['birth_date'] ?? '') ?>
+                                <?= esc(indo_format_hari_bulan_tahun($me['birth_date']) ?? '') ?>
                             </span>
                         </li>
                         <li><span class="kv-k">Orang Tua/Wali</span><span class="kv-v"><?= esc($me['parent_name'] ?? '—') ?></span></li>
@@ -300,7 +297,7 @@
                                 <tr>
                                     <td><?= esc($n['tahun_ajaran'] ?? '-') ?></td>
                                     <td><?= esc($n['semester'] ?? '-') ?></td>
-                                    <td><?= esc($n['tanggal'] ?? '-') ?></td>
+                                    <td><?= esc(indo_format_hari_bulan_tahun($n['tanggal']) ?? '-') ?></td>
                                     <td><?= esc($n['mapel_nama'] ?? '-') ?></td>
                                     <td><span class="badge badge-cat"><?= esc($n['kategori_kode'] ?? ($n['kategori_nama'] ?? '-')) ?></span></td>
                                     <td class="text-end"><?= number_format((float)($n['skor'] ?? 0), 2, ',', '.') ?></td>
@@ -317,13 +314,16 @@
     </div>
 </div>
 
-<!-- Data PHP -> JS -->
+<?= $this->endSection() ?>
+<?= $this->section('scripts') ?>
+
+<!-- Data PHP → JS (sinkron dengan controller) -->
 <script>
     const mapelLabels = <?= json_encode($mapelLabels ?? [], JSON_UNESCAPED_UNICODE) ?>;
     const mapelScores = <?= json_encode($mapelScores ?? [], JSON_NUMERIC_CHECK) ?>;
 </script>
 
-<!-- Chart.js -->
+<!-- Chart.js (defer) -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" defer></script>
 
 <!-- Init Chart -->
@@ -331,9 +331,11 @@
     (function bootCharts(attempt = 0) {
         if (!window.Chart) {
             if (attempt < 60) return setTimeout(() => bootCharts(attempt + 1), 100);
-            console.error('Chart.js belum termuat.');
+            console.error('Chart.js belum termuat. Cek CDN / file lokal / CSP.');
             return;
         }
+
+        // Global theme
         Chart.defaults.font.family = `'Inter',system-ui,-apple-system,Segoe UI,Roboto,'Helvetica Neue',Arial`;
         Chart.defaults.color = '#6b7280';
         Chart.defaults.plugins.legend.display = false;
@@ -343,6 +345,7 @@
 
         const ACCENTS = ['#0d6efd', '#3d8bfd', '#0b5ed7', '#6ea8fe', '#9ec5fe', '#cfe2ff', '#74a5ff'];
 
+        // Bar: Mapel
         const el = document.getElementById('chartMapel');
         if (el && Array.isArray(mapelLabels) && mapelLabels.length) {
             new Chart(el.getContext('2d'), {

@@ -147,15 +147,14 @@
                     <!-- tahun_ajaran_id -->
                     <div class="col-md-6">
                         <label for="tahun_ajaran_id" class="form-label">Tahun Ajaran</label>
-                        <select class="form-select<?= $hasErr('tahun_ajaran_id') ? ' is-invalid' : '' ?>"
-                            id="tahun_ajaran_id" name="tahun_ajaran_id" aria-describedby="taFeedback" required>
-                            <option value="" disabled>— Pilih Tahun Ajaran —</option>
+                        <select name="tahun_ajaran_id" class="form-select form-select-sm" required>
                             <?php foreach (($optTA ?? []) as $ta): ?>
-                                <?php $selected = (string)old('tahun_ajaran_id', $row['tahun_ajaran_id'] ?? ($tahunajaran ?? '')) === (string)($ta['id_tahun_ajaran'] ?? ''); ?>
-                                <option value="<?= esc($ta['id_tahun_ajaran']) ?>" <?= $selected ? 'selected' : '' ?>>
-                                    <?= esc(($ta['tahun'] ?? '') . ' - ' . ($ta['semester'] ?? '')) ?>
+                                <option value="<?= esc($ta['id_tahun_ajaran']) ?>"
+                                    <?= ((int)$row['tahun_ajaran_id'] === (int)$ta['id_tahun_ajaran']) ? 'selected' : '' ?>>
+                                    <?= esc($ta['tahun']) ?> - Semester <?= esc(ucfirst($ta['semester'])) ?>
+                                    <?= !empty($ta['is_active']) ? ' (Aktif)' : '' ?>
                                 </option>
-                            <?php endforeach; ?>
+                            <?php endforeach ?>
                         </select>
                         <?php if ($hasErr('tahun_ajaran_id')): ?>
                             <div id="taFeedback" class="invalid-feedback d-block"><?= esc($getErr('tahun_ajaran_id')) ?></div>

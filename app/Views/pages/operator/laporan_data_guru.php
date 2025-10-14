@@ -100,9 +100,12 @@
                         <tbody id="tableGuru">
                             <?php
                             $no = 1;
+
+                            // Formatter simpel: terima 'YYYY-MM-DD' atau null/zero-date -> tampil '—'
                             $fmtDMY = function ($val): string {
-                                $t = _indo_parse_time($val, 'Asia/Jakarta');
-                                return $t ? $t->format('d/m/Y') : '—';
+                                if (empty($val) || $val === '0000-00-00' || $val === '0000-00-00 00:00:00') return '—';
+                                $ts = strtotime($val);
+                                return $ts ? date('d/m/Y', $ts) : '—';
                             };
 
                             foreach ($d_guru as $g):
@@ -110,14 +113,10 @@
                                 $nip  = (string)($g['nip'] ?? '');
                                 $nama = (string)($g['nama_lengkap'] ?? '');
 
-                                // Jenis kelamin → badge (super-robust)
+                                // Jenis kelamin → badge (robust)
                                 $jkRaw   = (string)($g['jenis_kelamin'] ?? '');
                                 $jkTrim  = trim($jkRaw);
-
-                                // Normalisasi: uppercase
                                 $JK_UP   = mb_strtoupper($jkTrim, 'UTF-8');
-
-                                // Ambil huruf A–Z saja untuk mendeteksi huruf pertama (buang spasi/simbol/angka)
                                 $JK_LET  = preg_replace('/[^A-Z]/u', '', $JK_UP);
                                 $first   = $JK_LET !== '' ? $JK_LET[0] : '';
 
@@ -128,7 +127,6 @@
                                 } elseif ($first === 'P' || preg_match('/\b(PEREMPUAN|WANITA|FEMALE)\b/u', $JK_UP)) {
                                     $jkCode  = 'P';
                                     $jkTag   = 'Perempuan';
-                                    // pakai kelas Bootstrap yang pasti ada; kalau punya 'bg-pink' custom, boleh ganti
                                     $badgeJK = 'badge bg-danger';
                                 } else {
                                     $jkCode  = '-';
@@ -136,16 +134,28 @@
                                     $badgeJK = 'badge bg-secondary';
                                 }
 
-
-                                // === Status tahunan ===
+                                // Status tahunan
                                 $stRaw        = mb_strtolower((string)($g['status'] ?? ''), 'UTF-8');
                                 $isActiveYear = in_array($stRaw, ['1', 'aktif', 'active', 'ya', 'true'], true);
                                 $statusText   = $isActiveYear ? 'Aktif' : 'Nonaktif';
                                 $badgeStatus  = $isActiveYear ? 'badge bg-success' : 'badge bg-secondary';
 
-                                // === Tanggal ===
-                                $tMasuk  = $fmtDMY($g['tanggal_masuk']  ?? null);
-                                $tKeluar = $fmtDMY($g['tanggal_keluar'] ?? null);
+                                // Tanggal (PAKAI ALIAS GABUNGAN DARI CONTROLLER)
+                                $tMasuk  = $fmtDMY($g['tanggal_masuk_all']  ?? null);
+                                $tKeluar = $fmtDMY($g['tanggal_keluar_all'] ?? null);
+
+                                // (opsional) Tooltip audit jika tanggal GT dan master berbeda
+                                $gtMasuk   = (string)($g['t_masuk_gt'] ?? '');
+                                $msMasuk   = (string)($g['t_masuk_master'] ?? '');
+                                $audTipMas = ($gtMasuk && $msMasuk && $gtMasuk !== $msMasuk)
+                                    ? ' title="Tahunan: ' . $fmtDMY($gtMasuk) . ' • Master: ' . $fmtDMY($msMasuk) . '"'
+                                    : '';
+
+                                $gtKeluar   = (string)($g['t_keluar_gt'] ?? '');
+                                $msKeluar   = (string)($g['t_keluar_master'] ?? '');
+                                $audTipKel  = ($gtKeluar && $msKeluar && $gtKeluar !== $msKeluar)
+                                    ? ' title="Tahunan: ' . $fmtDMY($gtKeluar) . ' • Master: ' . $fmtDMY($msKeluar) . '"'
+                                    : '';
                             ?>
                                 <tr data-name="<?= esc(mb_strtolower($nama, 'UTF-8')) ?>"
                                     data-nip="<?= esc($nip) ?>"
@@ -155,20 +165,23 @@
                                     <td class="fw-semibold"><?= esc($nama) ?></td>
                                     <td><span class="<?= esc($badgeJK) ?>"><?= esc($jkTag) ?></span></td>
                                     <td><span class="<?= esc($badgeStatus) ?>"><?= esc($statusText) ?></span></td>
-                                    <td><?= esc($tMasuk) ?></td>
-                                    <td><?= esc($tKeluar) ?></td>
-                                    <td>
-                                        <a href="#"
-                                            class="btn btn-outline-danger"
-                                            onclick="confirmDeleteLapGuru('<?= esc($id, 'js') ?>')"
-                                            title="Hapus">
-                                            <i class="fa-solid fa-trash"></i>
-                                        </a>
-                                    </td>
+
+                                    <!-- Tanggal: gunakan alias gabungan; tidak perlu reformat lagi -->
+                                    <td<?= $audTipMas ?>><?= esc(format_ddmmyyyy_ke_tanggal_indo($tMasuk)) ?></td>
+                                        <td<?= $audTipKel ?>><?= esc(format_ddmmyyyy_ke_tanggal_indo($tKeluar)) ?></td>
+
+                                            <td>
+                                                <a href="#"
+                                                    class="btn btn-outline-danger btn-sm"
+                                                    onclick="confirmDeleteLapGuru('<?= esc($id, 'js') ?>')"
+                                                    title="Hapus">
+                                                    <i class="fa-solid fa-trash"></i>
+                                                </a>
+                                            </td>
                                 </tr>
                             <?php endforeach; ?>
-
                         </tbody>
+
 
                     </table>
                 </div>

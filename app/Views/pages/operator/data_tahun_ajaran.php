@@ -58,7 +58,7 @@
             <!-- Tabel -->
             <?php if (!empty($d_TahunAjaran) && is_array($d_TahunAjaran)): ?>
                 <div class="table-responsive">
-                    <table id="tableDataMatpel" class="table table-modern align-middle">
+                    <table id="tableDataTahunAjaran" class="table table-modern align-middle">
                         <thead>
                             <tr>
                                 <th class="w-40px">No</th>
