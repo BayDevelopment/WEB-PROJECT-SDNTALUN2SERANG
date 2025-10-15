@@ -200,6 +200,134 @@
         margin-inline: auto;
         padding-inline: .25rem;
     }
+
+    /* ==== Default (desktop/tablet) biarkan seperti biasa ==== */
+    .card-modern {
+        width: 100%;
+    }
+
+    /* ==== Mobile tweaks (≤576px) ==== */
+    @media (max-width: 576px) {
+
+        /* 1) Card full width & padding lebih rapat */
+        .card-modern {
+            max-width: 100% !important;
+            width: 100% !important;
+            border-radius: .75rem;
+        }
+
+        .card-modern .card-body {
+            padding: .875rem 1rem;
+        }
+
+        .card-modern .card-header {
+            padding: .625rem 1rem;
+            font-size: .9375rem;
+            /* ~15px */
+            line-height: 1.25;
+        }
+
+        /* 2) Skala tipografi di dalam card (lebih kecil & rapi) */
+        .card-modern {
+            font-size: .875rem;
+        }
+
+        /* ~14px dasar */
+        .card-modern .h5 {
+            font-size: 1rem;
+            margin-bottom: .25rem;
+        }
+
+        .card-modern .small,
+        .card-modern .form-text {
+            font-size: .8125rem;
+        }
+
+        /* ~13px */
+        .card-modern .badge {
+            font-size: .75rem;
+            padding: .25rem .5rem;
+        }
+
+        /* 3) Header profil: avatar & gap */
+        .avatar-lg {
+            width: 72px;
+            height: 72px;
+            object-fit: cover;
+        }
+
+        .profile-narrow {
+            max-width: 100% !important;
+            width: 100% !important;
+            margin: 0;
+        }
+
+        .profile-narrow .row.g-3 {
+            --bs-gutter-x: .75rem;
+            --bs-gutter-y: .75rem;
+        }
+
+        /* 4) List key–value ditumpuk (biar lega di layar kecil) */
+        .list-kv {
+            font-size: .875rem;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+
+        .list-kv li {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: .125rem;
+            padding: .375rem 0;
+        }
+
+        .list-kv .kv-k {
+            color: var(--bs-secondary-color, #6c757d);
+            font-weight: 500;
+        }
+
+        .list-kv .kv-v {
+            margin-left: 0;
+            text-align: left;
+            word-break: break-word;
+            /* email/alamat panjang nggak overflow */
+        }
+
+        /* 5) Form & tombol lebih kompak */
+        .card-modern .form-label {
+            font-size: .875rem;
+            margin-bottom: .25rem;
+        }
+
+        .card-modern .form-control {
+            font-size: .875rem;
+            padding: .375rem .5rem;
+        }
+
+        .card-modern .btn {
+            font-size: .875rem;
+            padding: .375rem .75rem;
+        }
+
+        /* 6) Utility opsional: pakai di elemen tertentu bila perlu */
+        .fs-sm-10 {
+            font-size: .75rem !important;
+        }
+
+        /* 12px */
+        .fs-sm-9 {
+            font-size: .8125rem !important;
+        }
+
+        /* 13px */
+        .fs-sm-8 {
+            font-size: .875rem !important;
+        }
+
+        /* 14px */
+    }
 </style>
 
 <div class="container-fluid px-4">

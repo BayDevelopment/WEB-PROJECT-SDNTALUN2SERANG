@@ -166,6 +166,101 @@
         color: #3d8bfd;
         border: 1px solid #dbe4ff
     }
+
+    /* Struktur opsional (kalau belum ada) */
+    .list-kv {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+    }
+
+    .list-kv li {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 6px 0;
+    }
+
+    .list-kv .kv-k {
+        color: var(--bs-secondary-color, #6c757d);
+        font-weight: 500;
+        max-width: 220px;
+    }
+
+    .list-kv .kv-v {
+        margin-left: auto;
+        text-align: right;
+    }
+
+    /* ——— Mobile tweak ——— */
+    @media (max-width: 576px) {
+        .card-body .profile-head {
+            gap: .75rem;
+        }
+
+        .card-body .avatar-96 {
+            width: 64px;
+            height: 64px;
+        }
+
+        /* kecilkan foto */
+
+        /* Judul & subinfo di header profil */
+        .card-body .name {
+            font-size: 1rem;
+            /* ~16px */
+            line-height: 1.25;
+            margin-bottom: .25rem;
+        }
+
+        .card-body .sub {
+            font-size: .8125rem;
+            /* ~13px */
+            margin-bottom: .25rem;
+        }
+
+        .card-body .badge {
+            font-size: .75rem;
+            /* ~12px */
+            padding: .25rem .5rem;
+        }
+
+        /* Daftar key–value */
+        .list-kv {
+            font-size: .875rem;
+        }
+
+        /* ~14px */
+        .list-kv li {
+            padding: .375rem 0;
+        }
+
+        .list-kv .kv-k {
+            max-width: 150px;
+        }
+
+        /* biar nggak kepanjangan */
+    }
+
+    /* ——— Optional: utility kelas responsif custom ———
+   Bisa dipakai kalau kamu butuh ngecilin bagian tertentu aja di mobile. */
+    @media (max-width: 576px) {
+        .fs-sm-8 {
+            font-size: .875rem !important;
+        }
+
+        /* 14px */
+        .fs-sm-9 {
+            font-size: .8125rem !important;
+        }
+
+        /* 13px */
+        .fs-sm-10 {
+            font-size: .75rem !important;
+        }
+
+        /* 12px */
+    }
 </style>
 
 <div class="container-fluid px-4">

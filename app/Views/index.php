@@ -19,8 +19,8 @@
 
     <!-- Fonts & Icons -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&display=swap" rel="stylesheet">
-    <!-- Gunakan CSS Font Awesome (lebih ringan daripada JS loader) -->
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet" integrity="sha512-SRMMg8p5nqU9e6eJwz0+6vLqKXy5wqQqL4m9a2wQ7V0y9v4q0s7aSb+KQy0sXq6Q8C3G4Uu5m1iVQXnX3c1C0A==" crossorigin="anonymous">
+    <!-- Disarankan: Font Awesome 6.x -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.0.1/css/all.min.css" integrity="sha512-2SwdPD6INVrV/lHTZbO2nodKhrnDdJK9/kg2XD1r9uGqPo1cUbujc+IYdlYdEErWNu69gVcYgdxlmVmzTWnetw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;800&display=swap');
@@ -134,19 +134,28 @@
             text-decoration: underline;
         }
 
+        /* Ikon mata */
         .input-icon {
             position: absolute;
-            right: 12px;
+            right: .75rem;
             top: 50%;
             transform: translateY(-50%);
+            z-index: 3;
             cursor: pointer;
-            opacity: .75;
+            opacity: .8;
             user-select: none;
+            pointer-events: auto;
         }
 
         .input-icon:hover {
             opacity: 1
         }
+
+        .form-floating>.form-control {
+            padding-right: 2.5rem;
+        }
+
+        /* ruang untuk ikon */
 
         footer.bg-light-modern {
             background: rgba(255, 255, 255, .85);
@@ -158,6 +167,15 @@
             .brand-title {
                 font-size: 1.05rem
             }
+        }
+
+        /* HANYA samarkan password; jangan samarkan input text */
+        input[type="password"].form-control {
+            -webkit-text-security: disc;
+        }
+
+        input[type="text"].form-control {
+            -webkit-text-security: none;
         }
     </style>
 </head>
@@ -199,10 +217,10 @@
                                         autocomplete="username"
                                         inputmode="text"
                                         enterkeyhint="next"
-                                        required
-                                        autofocus>
+                                        required autofocus>
                                     <label for="inputUsername">Username</label>
                                 </div>
+
                                 <div class="form-floating mb-3 position-relative">
                                     <input
                                         class="form-control"
@@ -212,14 +230,15 @@
                                         placeholder="Password"
                                         autocomplete="current-password"
                                         enterkeyhint="go"
-                                        required
-                                        aria-describedby="passwordHelp">
+                                        required aria-describedby="passwordHelp">
                                     <label for="inputPassword">Password</label>
+
                                     <button type="button" class="input-icon btn btn-link p-0 border-0" id="togglePass" aria-label="Tampilkan/sembunyikan password" aria-pressed="false">
                                         <i class="fa-regular fa-eye"></i>
                                     </button>
                                     <small id="passwordHelp" class="visually-hidden">Tekan ikon mata untuk menampilkan atau menyembunyikan password.</small>
                                 </div>
+
                                 <button type="submit" id="btnLogin" class="btn btn-primary w-100 py-2">
                                     <i class="fas fa-right-to-bracket me-1"></i> Masuk
                                 </button>
@@ -244,31 +263,54 @@
     <script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
 
     <script>
-        // disabled submit
+        /* ====== Toggle show/hide password (final) ====== */
+        (function() {
+            let pass = document.getElementById('inputPassword'); // pakai let agar bisa reassign saat fallback
+            const btnToggle = document.getElementById('togglePass');
+            if (!pass || !btnToggle) return;
+
+            btnToggle.addEventListener('click', () => {
+                const toText = pass.type === 'password';
+
+                // Simpan posisi caret untuk UX mulus
+                const start = pass.selectionStart,
+                    end = pass.selectionEnd;
+
+                try {
+                    pass.type = toText ? 'text' : 'password';
+                } catch (e) {
+                    // Fallback untuk browser lama: clone node dengan tipe baru
+                    const clone = pass.cloneNode(true);
+                    clone.type = toText ? 'text' : 'password';
+                    pass.parentNode.replaceChild(clone, pass);
+                    pass = clone; // <- update referensi
+                }
+
+                // Pastikan masking CSS ikut berubah
+                pass.style.webkitTextSecurity = toText ? 'none' : 'disc';
+
+                // Ikon & a11y
+                btnToggle.setAttribute('aria-pressed', String(toText));
+                btnToggle.innerHTML = toText ?
+                    '<i class="fa-regular fa-eye-slash"></i>' :
+                    '<i class="fa-regular fa-eye"></i>';
+
+                // Fokus & kembalikan caret
+                pass.focus();
+                if (start != null && end != null && pass.setSelectionRange) {
+                    pass.setSelectionRange(start, end);
+                }
+            });
+        })();
+
+        /* ====== Freeze on submit (tetap kirim data) ====== */
         (function() {
             const form = document.getElementById('loginForm');
             if (!form) return;
 
-            // ===== Toggle show/hide password =====
-            const pass = document.getElementById('inputPassword');
-            const btnToggle = document.getElementById('togglePass');
-            if (btnToggle && pass) {
-                btnToggle.addEventListener('click', () => {
-                    const toText = pass.type === 'password';
-                    pass.type = toText ? 'text' : 'password';
-                    btnToggle.setAttribute('aria-pressed', String(toText));
-                    btnToggle.innerHTML = toText ?
-                        '<i class="fa-regular fa-eye-slash"></i>' :
-                        '<i class="fa-regular fa-eye"></i>';
-                    pass.focus();
-                });
-            }
-
-            // ===== Freeze on submit (tetap kirim data) =====
             function cloneFieldValue(el) {
                 if (!el.name || el.type === 'hidden') return;
 
-                // Bersihkan clone lama untuk name yang sama (hindari duplikasi)
                 form.querySelectorAll(
                     `input[type="hidden"][data-frozen-clone="1"][name="${CSS.escape(el.name)}"]`
                 ).forEach(n => n.remove());
@@ -276,12 +318,11 @@
                 const h = document.createElement('input');
                 h.type = 'hidden';
                 h.name = el.name;
-                // checkbox/radio: kirim hanya jika checked; lainnya kirim value langsung
+
                 if (el.type === 'checkbox' || el.type === 'radio') {
                     if (!el.checked) return;
                     h.value = el.value || 'on';
                 } else if (el.tagName.toLowerCase() === 'select' && el.multiple) {
-                    // multiple select → buat satu clone per opsi terpilih
                     Array.from(el.selectedOptions).forEach(opt => {
                         const hx = h.cloneNode();
                         hx.value = opt.value;
@@ -297,26 +338,23 @@
             }
 
             form.addEventListener('submit', function() {
-                if (form.dataset.frozen === '1') return; // cegah double-run
+                if (form.dataset.frozen === '1') return;
                 form.dataset.frozen = '1';
 
                 const fields = form.querySelectorAll('input, select, textarea, button');
 
-                // 1) Clone semua nilai agar tetap terkirim
                 fields.forEach(el => {
                     if (['submit', 'button', 'reset'].includes(el.type)) return;
                     if (el.disabled && el.type !== 'hidden') return;
                     cloneFieldValue(el);
                 });
 
-                // 2) Disable semua kontrol UI (kecuali hidden & clones)
                 fields.forEach(el => {
                     if (el.type === 'hidden') return;
                     el.disabled = true;
                     el.setAttribute('aria-disabled', 'true');
                 });
 
-                // 3) State loading pada tombol submit
                 const btn = document.getElementById('btnLogin') || form.querySelector('button[type="submit"], input[type="submit"]');
                 if (btn) {
                     btn.disabled = true;
@@ -325,11 +363,11 @@
                         btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Memproses...';
                     }
                 }
-                // Tidak preventDefault -> submit normal ke server
+                // submit normal
             });
         })();
 
-        // Util: load script dinamis
+        /* ====== Util: load script dinamis ====== */
         function loadScript(src, attrs = {}) {
             return new Promise((resolve, reject) => {
                 const s = document.createElement('script');
@@ -342,29 +380,7 @@
             });
         }
 
-        // Toggle password + a11y
-        (function() {
-            const toggle = document.getElementById('togglePass');
-            const inputPass = document.getElementById('inputPassword');
-            toggle?.addEventListener('click', () => {
-                const isPass = inputPass.type === 'password';
-                inputPass.type = isPass ? 'text' : 'password';
-                toggle.setAttribute('aria-pressed', String(isPass));
-                toggle.innerHTML = isPass ? '<i class="fa-regular fa-eye-slash"></i>' : '<i class="fa-regular fa-eye"></i>';
-            });
-        })();
-
-        // Cegah double submit
-        (function() {
-            const form = document.getElementById('loginForm');
-            const btn = document.getElementById('btnLogin');
-            form?.addEventListener('submit', () => {
-                btn.disabled = true;
-                btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Memproses...';
-            });
-        })();
-
-        // Particles.js: hanya kalau user tidak reduce-motion, dan muat setelah idle
+        /* ====== Particles (on idle & if allowed) ====== */
         (function() {
             const prefersReduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
             if (prefersReduced) return;
@@ -435,9 +451,7 @@
                             retina_detect: true
                         });
                     })
-                    .catch(() => {
-                        /* diem aja kalau gagal, halaman tetap jalan */
-                    });
+                    .catch(() => {});
             };
             if ('requestIdleCallback' in window) {
                 requestIdleCallback(initParticles, {
@@ -448,7 +462,7 @@
             }
         })();
 
-        // SweetAlert toast: muat library hanya jika ada flash message
+        /* ====== SweetAlert toast (jika ada flash) ====== */
         (function() {
             const msgSuccess = <?= json_encode($flashSuccess) ?>;
             const msgError = <?= json_encode($flashError) ?>;
@@ -481,9 +495,7 @@
                         title: flashWarn
                     });
                 })
-                .catch(() => {
-                    /* ignore */
-                });
+                .catch(() => {});
         })();
     </script>
 </body>

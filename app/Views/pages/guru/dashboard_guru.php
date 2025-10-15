@@ -253,6 +253,99 @@
 
         /* kurangi area ikon */
     }
+
+    /* ===== Dashboard Hero: mobile first tweaks ===== */
+    @media (max-width: 576px) {
+
+        /* Baris utama: stack vertikal, isi melebar penuh */
+        .dashboard-hero .d-flex.flex-wrap.align-items-center.justify-content-between {
+            flex-direction: column;
+            align-items: stretch;
+            gap: .5rem 0;
+        }
+
+        /* Tipografi judul & subjudul lebih kecil, tetap tegas */
+        .dashboard-hero .title {
+            font-size: 1.125rem;
+            /* ~18px */
+            line-height: 1.25;
+            margin-bottom: .25rem;
+        }
+
+        .dashboard-hero .subtitle {
+            font-size: .875rem;
+            /* ~14px */
+            line-height: 1.35;
+            word-break: break-word;
+            /* antisipasi teks panjang */
+        }
+
+        .dashboard-hero .badge {
+            font-size: .75rem;
+            /* ~12px */
+            padding: .25rem .5rem;
+            white-space: nowrap;
+            /* biar badge nggak pecah aneh */
+        }
+
+        /* Kelompok tombol aksi: jadikan full-width & menumpuk */
+        .dashboard-hero .d-flex.flex-wrap.gap-2 {
+            width: 100%;
+            justify-content: stretch;
+            gap: .5rem;
+            /* rapikan jarak antar tombol */
+        }
+
+        .dashboard-hero .d-flex.flex-wrap.gap-2 .btn {
+            flex: 1 1 100%;
+            width: 100%;
+            padding: .5rem .75rem;
+            /* kompak tapi nyaman */
+            border-radius: 999px;
+            /* pertahankan rounded-pill feel */
+            font-size: .875rem;
+        }
+
+        /* ===== Filter Mapel: susun vertikal & mudah disentuh ===== */
+        .dashboard-hero form .row.g-2 {
+            --bs-gutter-x: .5rem;
+            --bs-gutter-y: .5rem;
+            align-items: stretch !important;
+        }
+
+        /* Label pindah ke atas (full width) */
+        .dashboard-hero form .col-auto:first-child {
+            width: 100%;
+        }
+
+        .dashboard-hero form .col-auto:first-child .col-form-label {
+            display: block;
+            font-size: .875rem;
+            margin: 0 0 .25rem;
+        }
+
+        /* Select full width */
+        .dashboard-hero form .col-12.col-md-5.col-lg-4 {
+            width: 100%;
+        }
+
+        .dashboard-hero form select.form-select.form-select-sm {
+            font-size: .875rem;
+            padding: .375rem .75rem;
+        }
+
+        /* Tombol reset ikut full width */
+        .dashboard-hero form .col-auto:last-child {
+            width: 100%;
+        }
+
+        .dashboard-hero form .btn.btn-sm {
+            width: 100%;
+            padding: .5rem .75rem;
+            font-size: .875rem;
+            border-radius: 999px;
+        }
+    }
 </style>
 
 

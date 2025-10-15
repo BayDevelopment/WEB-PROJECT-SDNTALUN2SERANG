@@ -64,7 +64,7 @@
                             </div>
                         </div>
 
-                        <div class="col-6 col-md-4">
+                        <div class="col-12 col-md-4">
                             <?php $g = strtoupper((string)($gender ?? '')); ?>
                             <select id="filterGender" name="gender" class="form-select form-select-sm" aria-label="Filter gender">
                                 <option value="" <?= $g === ''  ? 'selected' : '' ?>>Semua Gender</option>
