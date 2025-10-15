@@ -330,7 +330,7 @@
     }
 </style>
 
-<div class="container-fluid px-4">
+<div class="container-fluid px-4 fade-in-up delay-300">
     <h1 class="mt-4 page-title">Profil Saya</h1>
     <ol class="breadcrumb mb-4 breadcrumb-modern">
         <li class="breadcrumb-item"><a href="<?= base_url('siswa/dashboard') ?>">Dashboard</a></li>

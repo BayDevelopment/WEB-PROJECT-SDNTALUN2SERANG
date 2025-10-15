@@ -1,7 +1,7 @@
 <?= $this->extend('layout/main') ?>
 
 <?= $this->section('content') ?>
-<div class="container-fluid px-4">
+<div class="container-fluid px-4 fade-in-up delay-300">
     <h1 class="mt-4 page-title">Dashboard</h1>
     <ol class="breadcrumb mb-4 breadcrumb-modern">
         <li class="breadcrumb-item active">Dashboard</li>

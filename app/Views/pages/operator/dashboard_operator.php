@@ -144,7 +144,7 @@
     }
 </style>
 
-<div class="container-fluid px-3 px-md-4">
+<div class="container-fluid px-3 px-md-4 fade-in-up delay-300">
 
     <!-- Hero -->
     <section class="dashboard-hero mt-4 mb-4">

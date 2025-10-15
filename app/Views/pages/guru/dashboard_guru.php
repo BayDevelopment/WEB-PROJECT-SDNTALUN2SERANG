@@ -349,7 +349,7 @@
 </style>
 
 
-<div class="container-fluid px-3 px-md-4">
+<div class="container-fluid px-3 px-md-4 fade-in-up delay-300">
 
     <?php
     // normalisasi jabatan untuk badge & filter

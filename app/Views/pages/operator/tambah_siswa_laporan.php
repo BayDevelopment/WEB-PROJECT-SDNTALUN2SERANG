@@ -60,20 +60,38 @@
         opacity: .75
     }
 
+    /* Lock layer + overlay blocker (baseline) */
     .form-lock {
-        position: relative;
+        position: relative
     }
 
-    .form-lock::after {
-        content: '';
+    .form-blocker {
         position: absolute;
         inset: 0;
-        background: rgba(255, 255, 255, .4);
-        pointer-events: auto;
+        background: rgba(255, 255, 255, .6);
+        backdrop-filter: blur(1px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 5;
+    }
+
+    .form-blocker.d-none {
+        display: none
+    }
+
+    .form-blocker-inner {
+        display: flex;
+        align-items: center;
+        padding: .5rem .75rem;
+        border-radius: .75rem;
+        background: rgba(255, 255, 255, .9);
+        box-shadow: 0 .4rem 1rem rgba(0, 0, 0, .08);
+        font-weight: 600;
     }
 </style>
 
-<div class="container-fluid px-4 page-section">
+<div class="container-fluid px-4 page-section fade-in-up delay-300">
     <!-- Header -->
     <div class="d-sm-flex align-items-center justify-content-between mb-3">
         <div>
@@ -101,21 +119,17 @@
                 method="post"
                 enctype="multipart/form-data"
                 autocomplete="off"
-                novalidate>
+                novalidate
+                class="position-relative">
+
                 <?= csrf_field() ?>
 
                 <?php
-                // Ambil error dari flash session (di-set di controller simpan: ->with('errors', [...]))
-                $errors   = session('errors') ?? [];
-                $hasErr   = fn(string $f) => isset($errors[$f]);
-                $getErr   = fn(string $f) => $errors[$f] ?? '';
+                $errors = session('errors') ?? [];
+                $hasErr = fn(string $f) => isset($errors[$f]);
+                $getErr = fn(string $f) => $errors[$f] ?? '';
 
-                // Preselect siswa: prioritas old('siswa_id') → $preselectId → $siswaTerpilih['id_siswa']
-                $selSiswaId = (int)(
-                    old('siswa_id')
-                    ?: ($preselectId ?? 0)
-                    ?: ($siswaTerpilih['id_siswa'] ?? 0)
-                );
+                $selSiswaId = (int)(old('siswa_id') ?: ($preselectId ?? 0) ?: ($siswaTerpilih['id_siswa'] ?? 0));
                 $selTAId     = (int) old('tahun_ajaran_id');
                 $selStatus   = (string) old('status');
                 ?>
@@ -224,7 +238,8 @@
 
                 <!-- Actions -->
                 <div class="d-flex gap-2 mt-4">
-                    <button type="submit" id="btnSubmit" class="btn btn-gradient rounded-pill">
+                    <button type="submit" id="btnSubmit" class="btn btn-gradient rounded-pill d-inline-flex align-items-center">
+                        <span class="spinner-border spinner-border-sm me-2 d-none" role="status" aria-hidden="true"></span>
                         <span class="btn-text">
                             <i class="fa-solid fa-floppy-disk me-2"></i> Simpan
                         </span>
@@ -238,29 +253,71 @@
                         <i class="fa-solid fa-arrow-left me-2"></i> Kembali
                     </a>
                 </div>
+
+                <!-- Overlay blocker -->
+                <div id="formBlocker" class="form-blocker d-none" aria-hidden="true">
+                    <div class="form-blocker-inner">
+                        <div class="spinner-border" role="status" aria-hidden="true"></div>
+                        <div class="ms-2">Loading…</div>
+                    </div>
+                </div>
             </form>
         </div>
     </div>
 </div>
 
-<!-- JS: submit loading + lock -->
+<!-- JS: submit loading + lock (disamakan dengan baseline) -->
 <script>
     (function() {
         const form = document.getElementById('formTambahSiswa');
-        const btnSubmit = document.getElementById('btnSubmit');
-        const btnText = btnSubmit?.querySelector('.btn-text');
+        const btn = document.getElementById('btnSubmit');
+        const spin = btn ? btn.querySelector('.spinner-border') : null;
+        const txt = btn ? btn.querySelector('.btn-text') : null;
+        const blk = document.getElementById('formBlocker');
+        if (!form || !btn) return;
 
-        form?.addEventListener('submit', function() {
-            if (btnText) {
-                btnText.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Menyimpan...';
-            }
-            btnSubmit.disabled = true;
+        let loading = false;
+
+        // Bekukan input teks (readonly) dan blokir interaksi untuk elemen lain via overlay
+        function freezeTextInputs(container) {
+            const selsText = 'input[type="text"],input[type="email"],input[type="password"],input[type="number"],input[type="date"],input[type="time"],input[type="datetime-local"],input[type="search"],input[type="tel"],textarea';
+            container.querySelectorAll(selsText).forEach(el => {
+                el.setAttribute('readonly', 'readonly');
+                el.setAttribute('aria-readonly', 'true');
+            });
+            container.querySelectorAll('select,input[type="checkbox"],input[type="radio"]').forEach(el => {
+                el.setAttribute('aria-disabled', 'true');
+            });
+        }
+
+        function armLoading(e) {
+            if (loading) return;
+            loading = true;
+
+            spin && spin.classList.remove('d-none');
+            txt && (txt.textContent = 'Menyimpan...');
+            btn.setAttribute('disabled', 'disabled');
+            btn.classList.add('disabled');
+
+            blk && blk.classList.remove('d-none');
             form.classList.add('form-lock');
+            form.setAttribute('aria-busy', 'true');
 
-            // pastikan CSRF tidak disable
+            freezeTextInputs(form);
+
+            // pastikan CSRF tidak pernah disabled
             const csrf = form.querySelector('input[name="<?= csrf_token() ?>"]');
             if (csrf) csrf.disabled = false;
-        });
+
+            // beri kesempatan repaint lalu submit normal
+            if (e && e.preventDefault) e.preventDefault();
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => form.submit());
+            });
+        }
+
+        btn.addEventListener('click', armLoading);
+        form.addEventListener('submit', armLoading);
     })();
 </script>
 <?= $this->endSection() ?>

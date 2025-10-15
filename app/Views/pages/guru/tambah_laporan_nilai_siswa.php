@@ -66,7 +66,7 @@
     }
 </style>
 
-<div class="container-fluid px-4 page-section">
+<div class="container-fluid px-4 page-section fade-in-up delay-300">
     <!-- Header -->
     <div class="d-sm-flex align-items-center justify-content-between gap-2 gap-sm-3 mb-3 flex-wrap">
         <div class="order-2 order-sm-1">

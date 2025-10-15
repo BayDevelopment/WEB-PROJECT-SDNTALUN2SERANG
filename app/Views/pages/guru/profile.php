@@ -180,7 +180,7 @@
         </style>
 
         <!-- LEFT: Profile Card -->
-        <div class="col-12 col-lg-4">
+        <div class="col-12 col-lg-4 fade-in-up delay-300">
             <div class="card border-0 shadow-sm rounded-4 overflow-hidden profile-modern">
                 <div class="card-body text-center pt-0 mt-3">
                     <h5 class="mb-1 fw-semibold"><?= esc($user['username'] ?? 'Guru') ?></h5>

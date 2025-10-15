@@ -263,7 +263,7 @@
     }
 </style>
 
-<div class="container-fluid px-4">
+<div class="container-fluid px-4 fade-in-up delay-300">
     <div class="d-sm-flex align-items-center justify-content-between mb-3">
         <div>
             <h1 class="mt-4 page-title">Laporan Nilai Saya</h1>

@@ -59,18 +59,37 @@
         opacity: .75
     }
 
+    /* Lock layer ala baseline */
     .form-lock {
         position: relative
     }
 
-    .form-lock::after {
-        content: '';
+    .form-blocker {
         position: absolute;
         inset: 0;
-        background: rgba(255, 255, 255, .4);
-        pointer-events: auto
+        background: rgba(255, 255, 255, .6);
+        backdrop-filter: blur(1px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 5;
     }
 
+    .form-blocker.d-none {
+        display: none
+    }
+
+    .form-blocker-inner {
+        display: flex;
+        align-items: center;
+        padding: .5rem .75rem;
+        border-radius: .75rem;
+        background: rgba(255, 255, 255, .9);
+        box-shadow: 0 .4rem 1rem rgba(0, 0, 0, .08);
+        font-weight: 600;
+    }
+
+    /* Ikon mata */
     .position-relative .input-icon.btn {
         position: absolute;
         right: .75rem;
@@ -81,11 +100,11 @@
     }
 
     .position-relative .input-icon.btn:hover {
-        color: var(--bs-body-color);
+        color: var(--bs-body-color)
     }
 </style>
 
-<div class="container-fluid px-4 page-section">
+<div class="container-fluid px-4 page-section fade-in-up delay-300">
     <!-- Header -->
     <div class="d-sm-flex align-items-center justify-content-between mb-3">
         <div>
@@ -112,12 +131,13 @@
                 method="post"
                 enctype="multipart/form-data"
                 autocomplete="off"
-                novalidate>
+                novalidate
+                class="position-relative">
+
                 <?= csrf_field() ?>
                 <input type="hidden" name="_method" value="PUT">
 
                 <?php
-                // Ambil error per-field dari flash session (controller: ->with('errors', $this->validator->getErrors()))
                 $errors = session('errors') ?? [];
                 $hasErr = fn(string $f) => isset($errors[$f]);
                 $getErr = fn(string $f) => $errors[$f] ?? '';
@@ -127,8 +147,7 @@
                     <!-- Username -->
                     <div class="col-md-6">
                         <label for="username" class="form-label">Username</label>
-                        <input
-                            type="text"
+                        <input type="text"
                             class="form-control<?= $hasErr('username') ? ' is-invalid' : '' ?>"
                             id="username" name="username"
                             value="<?= esc(old('username', $d_user['username'] ?? '')) ?>"
@@ -144,14 +163,11 @@
                     <div class="col-md-6">
                         <label for="password" class="form-label">Password (opsional)</label>
                         <div class="position-relative">
-                            <input
-                                type="password"
+                            <input type="password"
                                 class="form-control<?= $hasErr('password') ? ' is-invalid' : '' ?>"
                                 id="password" name="password"
                                 placeholder="Kosongkan jika tidak ingin mengubah"
                                 aria-describedby="passwordFeedback togglePwHelp">
-
-                            <!-- tombol mata -->
                             <button type="button"
                                 class="input-icon btn btn-link p-0 border-0 btn-toggle-pass"
                                 data-target="#password"
@@ -160,24 +176,18 @@
                                 <i class="fa-solid fa-eye"></i>
                             </button>
                         </div>
-
-                        <small id="togglePwHelp" class="visually-hidden">
-                            Tekan ikon mata untuk menampilkan atau menyembunyikan password.
-                        </small>
-
+                        <small id="togglePwHelp" class="visually-hidden">Tekan ikon mata untuk menampilkan atau menyembunyikan password.</small>
                         <div class="form-text">Minimal 6 karakter bila diisi.</div>
                         <?php if ($hasErr('password')): ?>
                             <div id="passwordFeedback" class="invalid-feedback d-block"><?= esc($getErr('password')) ?></div>
                         <?php endif; ?>
                     </div>
 
-
                     <!-- Role -->
                     <div class="col-md-6">
                         <label for="role" class="form-label">Role</label>
                         <?php $roleOld = old('role', $d_user['role'] ?? ''); ?>
-                        <select
-                            class="form-select<?= $hasErr('role') ? ' is-invalid' : '' ?>"
+                        <select class="form-select<?= $hasErr('role') ? ' is-invalid' : '' ?>"
                             id="role" name="role" required aria-describedby="roleFeedback">
                             <option value="" disabled <?= $roleOld ? '' : 'selected' ?>>— Pilih —</option>
                             <option value="siswa" <?= $roleOld === 'siswa'    ? 'selected' : '' ?>>Siswa</option>
@@ -192,8 +202,7 @@
                     <!-- Email -->
                     <div class="col-md-6">
                         <label for="email" class="form-label">Email</label>
-                        <input
-                            type="email"
+                        <input type="email"
                             class="form-control<?= $hasErr('email') ? ' is-invalid' : '' ?>"
                             id="email" name="email"
                             value="<?= esc(old('email', $d_user['email'] ?? '')) ?>"
@@ -212,8 +221,7 @@
                         <label class="form-label d-block">Status Akun</label>
                         <input type="hidden" name="is_active" value="0">
                         <div class="form-check form-switch">
-                            <input
-                                class="form-check-input<?= $hasErr('is_active') ? ' is-invalid' : '' ?>"
+                            <input class="form-check-input<?= $hasErr('is_active') ? ' is-invalid' : '' ?>"
                                 type="checkbox" id="is_active" name="is_active" value="1"
                                 <?= old('is_active', (string)($d_user['is_active'] ?? '1')) == '1' ? 'checked' : '' ?>>
                             <label class="form-check-label" for="is_active">Aktif</label>
@@ -226,7 +234,8 @@
 
                 <!-- Actions -->
                 <div class="d-flex gap-2 mt-4">
-                    <button type="submit" id="btnSubmit" class="btn btn-gradient rounded-pill">
+                    <button type="submit" id="btnSubmit" class="btn btn-gradient rounded-pill d-inline-flex align-items-center">
+                        <span class="spinner-border spinner-border-sm me-2 d-none" role="status" aria-hidden="true"></span>
                         <span class="btn-text"><i class="fa-solid fa-floppy-disk me-2"></i> Update</span>
                     </button>
 
@@ -234,14 +243,23 @@
                         <i class="fa-solid fa-arrow-left me-2"></i> Kembali
                     </a>
                 </div>
+
+                <!-- Overlay blocker ala baseline -->
+                <div id="formBlocker" class="form-blocker d-none" aria-hidden="true">
+                    <div class="form-blocker-inner">
+                        <div class="spinner-border" role="status" aria-hidden="true"></div>
+                        <div class="ms-2">Loading…</div>
+                    </div>
+                </div>
             </form>
         </div>
     </div>
 </div>
+
 <?= $this->endSection() ?>
 <?= $this->section('scripts') ?>
-<!-- JS: preview foto, reset foto, dan loading state submit -->
 <script>
+    // Toggle password (ikut baseline)
     document.addEventListener('click', function(e) {
         const btn = e.target.closest('.btn-toggle-pass');
         if (!btn) return;
@@ -249,53 +267,94 @@
         if (!target) return;
 
         const isPwd = target.type === 'password';
-        target.type = isPwd ? 'text' : 'password';
+        const start = target.selectionStart,
+            end = target.selectionEnd;
+
+        try {
+            target.type = isPwd ? 'text' : 'password';
+        } catch (e) {
+            const clone = target.cloneNode(true);
+            clone.type = isPwd ? 'text' : 'password';
+            target.parentNode.replaceChild(clone, target);
+        }
+
+        // sinkronkan ikon + a11y
         btn.setAttribute('aria-pressed', String(isPwd));
-        btn.innerHTML = isPwd ?
-            '<i class="fa-solid fa-eye-slash"></i>' :
-            '<i class="fa-solid fa-eye"></i>';
+        btn.innerHTML = isPwd ? '<i class="fa-solid fa-eye-slash"></i>' : '<i class="fa-solid fa-eye"></i>';
+
         target.focus();
+        if (start != null && end != null && target.setSelectionRange) target.setSelectionRange(start, end);
     });
 
+    // Preview & reset foto (aman kalau elemen tidak ada)
     (function() {
-        const form = document.getElementById('formEditUser');
-        const btnSubmit = document.getElementById('btnSubmit');
-        const btnText = btnSubmit?.querySelector('.btn-text');
         const inputFile = document.getElementById('photo');
         const imgPrev = document.getElementById('previewPhoto');
-        const btnResetFoto = document.getElementById('btnResetFoto');
+        const btnReset = document.getElementById('btnResetFoto');
 
-        // Preview saat pilih foto
+        const originalSrc = imgPrev?.getAttribute('data-original') || imgPrev?.src || '';
+
         inputFile?.addEventListener('change', function() {
             const f = this.files?.[0];
-            if (f) {
-                const url = URL.createObjectURL(f);
-                imgPrev.src = url;
-            } else {
-                imgPrev.src = originalSrc;
-            }
+            imgPrev && (imgPrev.src = f ? URL.createObjectURL(f) : originalSrc);
         });
-
-        // Reset ke foto lama
-        btnResetFoto?.addEventListener('click', function() {
+        btnReset?.addEventListener('click', function() {
             if (inputFile) inputFile.value = '';
-            imgPrev.src = originalSrc;
-        });
-
-        // Submit overlay (tanpa disable field agar nilai terkirim)
-        form?.addEventListener('submit', function() {
-            if (btnText) {
-                btnText.innerHTML =
-                    '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Menyimpan...';
-            }
-            btnSubmit.disabled = true;
-            form.classList.add('form-lock');
-
-            // pastikan CSRF tidak pernah disabled
-            const csrf = form.querySelector('input[name="<?= csrf_token() ?>"]');
-            if (csrf) csrf.disabled = false;
+            if (imgPrev) imgPrev.src = originalSrc;
         });
     })();
-</script>
 
+    // Loading state submit (seragam dengan baseline)
+    (function() {
+        const form = document.getElementById('formEditUser');
+        const btn = document.getElementById('btnSubmit');
+        const spin = btn ? btn.querySelector('.spinner-border') : null;
+        const txt = btn ? btn.querySelector('.btn-text') : null;
+        const blk = document.getElementById('formBlocker');
+        if (!form || !btn) return;
+
+        let loading = false;
+
+        // Bekukan input teks (readonly) dan blokir interaksi via overlay
+        function freezeTextInputs(container) {
+            const selsText = 'input[type="text"],input[type="email"],input[type="password"],input[type="number"],input[type="date"],input[type="time"],input[type="datetime-local"],input[type="search"],input[type="tel"],textarea';
+            container.querySelectorAll(selsText).forEach(el => {
+                el.setAttribute('readonly', 'readonly');
+                el.setAttribute('aria-readonly', 'true');
+            });
+            container.querySelectorAll('select,input[type="checkbox"],input[type="radio"]').forEach(el => {
+                el.setAttribute('aria-disabled', 'true');
+            });
+        }
+
+        function armLoading(e) {
+            if (loading) return;
+            loading = true;
+
+            spin && spin.classList.remove('d-none');
+            txt && (txt.textContent = 'Menyimpan...');
+            btn.setAttribute('disabled', 'disabled');
+            btn.classList.add('disabled');
+
+            blk && blk.classList.remove('d-none');
+            form.classList.add('form-lock');
+            form.setAttribute('aria-busy', 'true');
+
+            freezeTextInputs(form);
+
+            // pastikan CSRF tidak disabled (jaga-jaga)
+            const csrf = form.querySelector('input[name="<?= csrf_token() ?>"]');
+            if (csrf) csrf.disabled = false;
+
+            // biarkan repaint lalu submit normal
+            if (e && e.preventDefault) e.preventDefault();
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => form.submit());
+            });
+        }
+
+        btn.addEventListener('click', armLoading);
+        form.addEventListener('submit', armLoading);
+    })();
+</script>
 <?= $this->endSection() ?>
