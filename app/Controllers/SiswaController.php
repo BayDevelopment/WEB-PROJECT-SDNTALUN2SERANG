@@ -537,25 +537,39 @@ class SiswaController extends BaseController
         }
 
         $username = trim((string) $this->request->getPost('username'));
+        $validator = \Config\Services::validation();
 
-        // Validasi (dalam Bahasa Indonesia)
+        // === 1) Manual check: spasi dilarang
+        if (preg_match('/\s/', $username)) {
+            $validator->setError('username', 'Username tidak boleh mengandung spasi.');
+            return redirect()->back()->withInput()->with('validation', $validator);
+        }
+
+        // === 2) Manual check: reserved name "tb_users" (case-insensitive)
+        if (strcasecmp($username, 'tb_users') === 0) {
+            $validator->setError('username', 'Username tidak boleh menggunakan nama "tb_users".');
+            return redirect()->back()->withInput()->with('validation', $validator);
+        }
+
+        // === 3) Rules CI4 (unik + pola + panjang)
         $rules = [
             'username' => [
                 'label'  => 'Username',
-                'rules'  => "required|alpha_numeric_punct|min_length[4]|max_length[20]|is_unique[tb_users.username,id_user,{$userId}]",
+                // Samakan dengan hint: 4–24
+                'rules'  => "required|regex_match[/^[A-Za-z0-9._:@#-]+$/]|min_length[4]|max_length[24]|is_unique[tb_users.username,id_user,{$userId}]",
                 'errors' => [
-                    'required'            => '{field} wajib diisi.',
-                    'alpha_numeric_punct' => '{field} hanya boleh berisi huruf, angka, dan karakter khusus (.,:_-@#).',
-                    'min_length'          => '{field} minimal harus {param} karakter.',
-                    'max_length'          => '{field} maksimal {param} karakter.',
-                    'is_unique'           => '{field} sudah digunakan oleh pengguna lain.',
+                    'required'    => '{field} wajib diisi.',
+                    'regex_match' => '{field} hanya boleh berisi huruf, angka, dan karakter (.,:_-@#), tanpa spasi.',
+                    'min_length'  => '{field} minimal harus {param} karakter.',
+                    'max_length'  => '{field} maksimal {param} karakter.',
+                    'is_unique'   => '{field} sudah digunakan oleh pengguna lain.',
                 ]
             ],
         ];
 
-
         if (! $this->validate($rules)) {
-            return redirect()->back()->withInput()->with('sweet_error', 'Periksa kembali input Anda.');
+            // Kirimkan objek validator ke view agar $v->hasError(...) berfungsi
+            return redirect()->back()->withInput()->with('validation', $this->validator);
         }
 
         try {
@@ -564,8 +578,7 @@ class SiswaController extends BaseController
                 'updated_at' => date('Y-m-d H:i:s'),
             ]);
 
-            // Regenerasi session ID (good practice)
-            session()->regenerate();
+            session()->regenerate(); // good practice
 
             return redirect()->to(base_url('siswa/profile'))
                 ->with('sweet_success', 'Username berhasil diperbarui.');
@@ -574,6 +587,8 @@ class SiswaController extends BaseController
                 ->with('sweet_error', 'Gagal memperbarui username. Coba lagi.');
         }
     }
+
+
     public function updatePassword()
     {
         // Wajib login

@@ -30,7 +30,8 @@
                 <!-- Filter (Form GET) -->
                 <div class="col-12 col-md-9">
                     <form id="filterForm" method="get" class="row g-2 align-items-center">
-                        <div class="col-12 col-md-8">
+                        <!-- Search -->
+                        <div class="col-12 col-md-6">
                             <div class="input-group input-group-sm search-group">
                                 <span class="input-group-text">
                                     <i class="fa-solid fa-magnifying-glass"></i>
@@ -47,12 +48,31 @@
                             </div>
                         </div>
 
-                        <div class="col-6 col-md-4">
+                        <!-- Gender -->
+                        <div class="col-6 col-md-3">
                             <select id="filterGender" name="gender" class="form-select form-select-sm" aria-label="Filter gender">
                                 <?php $g = $gender ?? ''; ?>
                                 <option value="" <?= $g === '' ? 'selected' : '' ?>>Semua Gender</option>
                                 <option value="L" <?= $g === 'L' ? 'selected' : '' ?>>Laki-laki</option>
                                 <option value="P" <?= $g === 'P' ? 'selected' : '' ?>>Perempuan</option>
+                            </select>
+                        </div>
+
+                        <!-- Kelas (NEW) -->
+                        <div class="col-6 col-md-3">
+                            <select id="filterKelas" name="kelas" class="form-select form-select-sm" aria-label="Filter kelas">
+                                <?php $kSel = $kelas ?? ''; ?>
+                                <option value="" <?= $kSel === '' ? 'selected' : '' ?>>Semua Kelas</option>
+                                <?php if (!empty($listKelas)): ?>
+                                    <?php foreach ($listKelas as $k): ?>
+                                        <option value="<?= esc($k['id_kelas']) ?>"
+                                            <?= (string)$kSel === (string)$k['id_kelas'] ? 'selected' : '' ?>>
+                                            <?= esc($k['nama_kelas'] ?? ('Kelas #' . $k['id_kelas'])) ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                <?php else: ?>
+                                    <option value="" disabled>(Kelas belum tersedia)</option>
+                                <?php endif; ?>
                             </select>
                         </div>
                     </form>
@@ -125,20 +145,18 @@
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         const form = document.getElementById('filterForm');
-        const inpQ = document.getElementById('searchSiswa');
-        const selG = document.getElementById('filterGender');
+        const gender = document.getElementById('filterGender');
+        const kelas = document.getElementById('filterKelas');
+        const search = document.getElementById('searchSiswa');
 
-        // Debounce submit saat mengetik
-        let timer = null;
-        inpQ.addEventListener('input', function() {
-            clearTimeout(timer);
-            timer = setTimeout(() => form.submit(), 350);
-        });
+        if (gender) gender.addEventListener('change', () => form.submit());
+        if (kelas) kelas.addEventListener('change', () => form.submit());
 
-        // Submit otomatis saat dropdown berubah
-        selG.addEventListener('change', function() {
-            form.submit();
-        });
+        if (search) {
+            search.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') form.submit();
+            });
+        }
     });
 </script>
 <?= $this->endSection() ?>

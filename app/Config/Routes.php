@@ -59,6 +59,7 @@ $routes->group('operator', ['filter' => ['auth', 'role:operator']], static funct
     $routes->get('edit-siswa/(:num)',  'OperatorController::page_edit_siswa/$1');
     $routes->PUT('edit-siswa/(:num)',  'OperatorController::aksi_update_siswa/$1');
     $routes->get('detail-siswa/(:num)',  'OperatorController::page_detail_siswa/$1');
+    $routes->post('detail-siswa',  'OperatorController::aksi_edit_detail_siswa');
     $routes->get('data-siswa/delete/(:num)',  'OperatorController::aksi_delete_siswa/$1');
     $routes->get('profile',  'OperatorController::page_profile');
     $routes->post('profile',  'OperatorController::aksi_update_profile');

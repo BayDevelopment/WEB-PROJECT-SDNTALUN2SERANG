@@ -121,6 +121,86 @@
             box-shadow: none !important
         }
     }
+
+    /* Freeze interaksi tanpa menghapus nilai/submit payload */
+    #formEditSiswaTahun.is-submitting .freeze-area {
+        pointer-events: none;
+        /* blok klik */
+        user-select: none;
+        /* blok seleksi */
+        opacity: .75;
+        /* efek beku */
+        filter: grayscale(.1);
+    }
+
+    /* Tampilkan overlay ketika submit */
+    #formEditSiswaTahun.is-submitting #formBlocker {
+        display: block !important;
+    }
+
+    /* Spinner on (span.spinner-border di tombol) */
+    #formEditSiswaTahun.is-submitting #btnSubmit .spinner-border {
+        display: inline-block !important;
+    }
+
+    /* Sembunyikan teks tombol saat loading (opsional) */
+    #formEditSiswaTahun.is-submitting #btnSubmit .btn-text {
+        opacity: .6;
+    }
+
+    /* Gaya overlay (kalau belum ada) */
+    .form-blocker {
+        position: absolute;
+        inset: 0;
+        background: rgba(255, 255, 255, .6);
+        display: none;
+        z-index: 10;
+    }
+
+    .form-blocker .form-blocker-inner {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        display: flex;
+        align-items: center;
+    }
+
+    #formEditSiswaTahun.is-submitting .freeze-area {
+        pointer-events: none;
+        user-select: none;
+        opacity: .75;
+        filter: grayscale(.1);
+    }
+
+    #formEditSiswaTahun.is-submitting #formBlocker {
+        display: block !important;
+    }
+
+    #formEditSiswaTahun.is-submitting #btnSubmit .spinner-border {
+        display: inline-block !important;
+    }
+
+    #formEditSiswaTahun.is-submitting #btnSubmit .btn-text {
+        opacity: .6;
+    }
+
+    .form-blocker {
+        position: absolute;
+        inset: 0;
+        background: rgba(255, 255, 255, .6);
+        display: none;
+        z-index: 10;
+    }
+
+    .form-blocker .form-blocker-inner {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        display: flex;
+        align-items: center;
+    }
 </style>
 
 <div class="container-fluid px-4 page-section mb-3 fade-in-up delay-300">
@@ -293,6 +373,156 @@
                         </div>
                     </div>
                 </div>
+                <div class="col-12">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-body d-flex flex-wrap gap-4">
+                            <?php $v = $validation ?? \Config\Services::validation(); ?>
+
+                            <!-- ...potongan view kamu di atas... -->
+
+                            <form id="formEditSiswaTahun"
+                                action="<?= site_url('operator/detail-siswa') ?>"
+                                method="post"
+                                enctype="multipart/form-data"
+                                autocomplete="off"
+                                novalidate
+                                class="position-relative">
+
+                                <?= csrf_field() ?>
+
+                                <?php
+                                $errors = session('errors') ?? [];
+                                $hasErr = fn(string $f) => isset($errors[$f]);
+                                $getErr = fn(string $f) => $errors[$f] ?? '';
+
+                                $siswa           = $siswa    ?? [];
+                                $d_siswa         = $d_siswa  ?? [];
+                                $d_tahun         = $d_tahun  ?? [];
+                                $siswaTahunEdit  = $siswaTahunEdit ?? null;
+
+                                $idStEdit  = (int)($siswaTahunEdit['id_siswa_tahun'] ?? 0);
+                                $selSiswaId = (int)(old('siswa_id') ?: ($siswa['id_siswa'] ?? 0));
+                                $selTAId   = (int)(old('tahun_ajaran_id') ?: ($siswaTahunEdit['tahun_ajaran_id'] ?? 0));
+                                $selStatus = (string)(old('status') ?: ($siswaTahunEdit['status'] ?? ''));
+                                $tglMasuk  = old('tanggal_masuk')  ?? ($siswaTahunEdit['tanggal_masuk']  ?? '');
+                                $tglKeluar = old('tanggal_keluar') ?? ($siswaTahunEdit['tanggal_keluar'] ?? '');
+
+                                $nisn = $siswa['nisn'] ?? '';
+                                ?>
+
+                                <?php if ($idStEdit > 0): ?>
+                                    <input type="hidden" name="id_siswa_tahun" value="<?= esc($idStEdit, 'attr') ?>">
+                                <?php endif; ?>
+                                <input type="hidden" name="nisn" value="<?= esc($nisn, 'attr') ?>">
+
+                                <div class="row g-3 mb-3 freeze-area">
+                                    <!-- Siswa (tampil saja; tidak dikirim) -->
+                                    <div class="col-md-6">
+                                        <label class="form-label">Siswa</label>
+                                        <input type="text" class="form-control"
+                                            value="<?= esc(($siswa['full_name'] ?? '—') . ' — ' . ($siswa['nisn'] ?? '')) ?>"
+                                            readonly>
+                                    </div>
+
+                                    <!-- Tahun Ajaran -->
+                                    <div class="col-md-6">
+                                        <label for="tahun_ajaran_id" class="form-label">Tahun Ajaran</label>
+                                        <?php if (!empty($d_tahun) && is_array($d_tahun)): ?>
+                                            <select name="tahun_ajaran_id" id="tahun_ajaran_id"
+                                                class="form-select<?= $hasErr('tahun_ajaran_id') ? ' is-invalid' : '' ?>">
+                                                <option value="" disabled <?= $selTAId ? '' : 'selected' ?>>— Pilih Tahun Ajaran —</option>
+                                                <?php foreach ($d_tahun as $t): ?>
+                                                    <?php
+                                                    $tid   = (int)($t['id_tahun_ajaran'] ?? 0);
+                                                    $nama  = (string)($t['tahun'] ?? '');
+                                                    $sem   = (string)($t['semester'] ?? '');
+                                                    $aktif = (int)($t['is_active'] ?? 0);
+                                                    $label = trim($nama . ' - ' . ucfirst($sem) . ($aktif ? ' (Aktif)' : ''));
+                                                    ?>
+                                                    <option value="<?= esc($tid, 'attr') ?>" <?= $selTAId === $tid ? 'selected' : '' ?>>
+                                                        <?= esc($label) ?>
+                                                    </option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                            <?php if ($hasErr('tahun_ajaran_id')): ?>
+                                                <div class="invalid-feedback d-block"><?= esc($getErr('tahun_ajaran_id')) ?></div>
+                                            <?php endif; ?>
+                                        <?php else: ?>
+                                            <div class="alert alert-warning mb-2">Tahun ajaran tidak ditemukan. Tambahkan tahun ajaran terlebih dahulu.</div>
+                                            <select class="form-select" id="tahun_ajaran_id" disabled>
+                                                <option>— Tidak ada data tahun ajaran —</option>
+                                            </select>
+                                        <?php endif; ?>
+                                    </div>
+
+                                    <!-- Status -->
+                                    <div class="col-md-6">
+                                        <label for="status" class="form-label">Status</label>
+                                        <select class="form-select<?= $hasErr('status') ? ' is-invalid' : '' ?>"
+                                            name="status" id="status" aria-describedby="statusFeedback">
+                                            <option value="" disabled <?= $selStatus ? '' : 'selected' ?>>— Pilih —</option>
+                                            <option value="aktif" <?= $selStatus === 'aktif'  ? 'selected' : '' ?>>Aktif</option>
+                                            <option value="keluar" <?= $selStatus === 'keluar' ? 'selected' : '' ?>>Keluar</option>
+                                            <option value="lulus" <?= $selStatus === 'lulus'  ? 'selected' : '' ?>>Lulus</option>
+                                        </select>
+                                        <?php if ($hasErr('status')): ?>
+                                            <div id="statusFeedback" class="invalid-feedback d-block"><?= esc($getErr('status')) ?></div>
+                                        <?php endif; ?>
+                                    </div>
+
+                                    <!-- Tanggal Masuk -->
+                                    <div class="col-md-6">
+                                        <label for="tanggal_masuk" class="form-label">Tanggal Masuk</label>
+                                        <input type="date"
+                                            class="form-control<?= $hasErr('tanggal_masuk') ? ' is-invalid' : '' ?>"
+                                            id="tanggal_masuk" name="tanggal_masuk"
+                                            value="<?= esc($tglMasuk) ?>">
+                                        <?php if ($hasErr('tanggal_masuk')): ?>
+                                            <div class="invalid-feedback d-block"><?= esc($getErr('tanggal_masuk')) ?></div>
+                                        <?php endif; ?>
+                                    </div>
+
+                                    <!-- Tanggal Keluar -->
+                                    <div class="col-md-6">
+                                        <label for="tanggal_keluar" class="form-label">Tanggal Keluar</label>
+                                        <input type="date"
+                                            class="form-control<?= $hasErr('tanggal_keluar') ? ' is-invalid' : '' ?>"
+                                            id="tanggal_keluar" name="tanggal_keluar"
+                                            value="<?= esc($tglKeluar) ?>">
+                                        <?php if ($hasErr('tanggal_keluar')): ?>
+                                            <div class="invalid-feedback d-block"><?= esc($getErr('tanggal_keluar')) ?></div>
+                                        <?php endif; ?>
+                                        <div class="form-text">Isi jika status Keluar/Lulus. Untuk Aktif, biarkan kosong.</div>
+                                    </div>
+                                </div>
+
+                                <!-- Actions -->
+                                <div class="d-flex gap-2 mt-4">
+                                    <button type="submit" id="btnSubmit" class="btn btn-gradient rounded-pill d-inline-flex align-items-center">
+                                        <span class="spinner-border spinner-border-sm me-2 d-none" role="status" aria-hidden="true"></span>
+                                        <span class="btn-text"><i class="fa-solid fa-floppy-disk me-2"></i> Simpan</span>
+                                    </button>
+
+                                    <button type="reset" id="btnReset" class="btn btn-outline-secondary rounded-pill">
+                                        <i class="fa-solid fa-rotate-left me-2"></i> Reset
+                                    </button>
+
+                                    <a href="<?= base_url('operator/data-siswa') ?>" class="btn btn-dark rounded-pill">
+                                        <i class="fa-solid fa-arrow-left me-2"></i> Kembali
+                                    </a>
+                                </div>
+
+                                <!-- Overlay blocker -->
+                                <div id="formBlocker" class="form-blocker d-none" aria-hidden="true">
+                                    <div class="form-blocker-inner">
+                                        <div class="spinner-border" role="status" aria-hidden="true"></div>
+                                        <div class="ms-2">Loading…</div>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
             </div> <!-- /row -->
         </div>
     </div>
@@ -316,6 +546,88 @@
         });
 
         btnPrint?.addEventListener('click', () => window.print());
+    })();
+    (function() {
+        const form = document.getElementById('formEditSiswaTahun');
+        if (!form) return;
+
+        const btnSubmit = document.getElementById('btnSubmit');
+        const btnReset = document.getElementById('btnReset');
+        const statusEl = document.getElementById('status');
+        const tMasuk = document.getElementById('tanggal_masuk');
+        const tKeluar = document.getElementById('tanggal_keluar');
+
+        let submitting = false;
+
+        function applyStatusRules() {
+            const val = (statusEl?.value || '').toLowerCase();
+            if (!tKeluar) return;
+
+            if (val === 'aktif') {
+                tKeluar.value = '';
+                tKeluar.setAttribute('disabled', 'disabled'); // tidak terkirim saat aktif
+                tKeluar.removeAttribute('required');
+            } else if (val === 'keluar' || val === 'lulus') {
+                tKeluar.removeAttribute('disabled');
+                tKeluar.setAttribute('required', 'required');
+            }
+        }
+
+        function syncMinKeluar() {
+            if (tMasuk && tKeluar && tMasuk.value) {
+                tKeluar.min = tMasuk.value;
+            } else if (tKeluar) {
+                tKeluar.removeAttribute('min');
+            }
+        }
+
+        statusEl?.addEventListener('change', applyStatusRules);
+        tMasuk?.addEventListener('change', syncMinKeluar);
+
+        // init
+        applyStatusRules();
+        syncMinKeluar();
+
+        form.addEventListener('submit', function(e) {
+            if (submitting) {
+                e.preventDefault();
+                return false;
+            }
+            submitting = true;
+
+            // sinkron lagi sebelum submit
+            applyStatusRules();
+            syncMinKeluar();
+
+            form.classList.add('is-submitting');
+
+            // Disable tombol (payload aman)
+            btnSubmit?.setAttribute('disabled', 'disabled');
+            btnReset?.setAttribute('disabled', 'disabled');
+
+            // Bekukan input tanpa men-disable (nilai tetap terkirim)
+            form.querySelectorAll('input, textarea').forEach(el => el.setAttribute('readonly', 'readonly'));
+            form.querySelectorAll('select').forEach(el => {
+                el.setAttribute('aria-disabled', 'true');
+                el.setAttribute('tabindex', '-1');
+            });
+        });
+
+        btnReset?.addEventListener('click', function() {
+            form.classList.remove('is-submitting');
+            submitting = false;
+            btnSubmit?.removeAttribute('disabled');
+            btnReset?.removeAttribute('disabled');
+
+            form.querySelectorAll('input[readonly], textarea[readonly]').forEach(el => el.removeAttribute('readonly'));
+            form.querySelectorAll('select[aria-disabled="true"]').forEach(el => {
+                el.removeAttribute('aria-disabled');
+                el.removeAttribute('tabindex');
+            });
+
+            applyStatusRules();
+            syncMinKeluar();
+        });
     })();
 </script>
 

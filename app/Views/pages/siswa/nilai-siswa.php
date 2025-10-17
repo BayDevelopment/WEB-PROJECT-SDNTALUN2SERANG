@@ -375,7 +375,7 @@
         <div class="card-body">
             <?php if (!empty($d_nilai)): ?>
                 <div class="table-responsive">
-                    <table class="table table-modern table-striped align-middle">
+                    <table class="table table-modern table-striped align-middle text-capitalize">
                         <thead>
                             <tr>
                                 <th>Tahun Ajaran</th>

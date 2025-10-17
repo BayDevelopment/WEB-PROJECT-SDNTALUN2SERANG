@@ -615,17 +615,16 @@ class OperatorController extends BaseController
     {
         $nisn = trim($nisn);
 
-        // Ambil siswa by NISN
+        // Ambil siswa by NISN + info kelas sekarang
         $detailSiswa = $this->SiswaModel
             ->select("
             tb_siswa.*,
             tb_users.username AS user_name,
             tb_users.username AS user_username,
-            tb_siswa.kelas_id       AS kelas_id_final,
-            k.nama_kelas            AS nama_kelas
+            tb_siswa.kelas_id AS kelas_id_final,
+            k.nama_kelas      AS nama_kelas
         ")
             ->join('tb_users', 'tb_users.id_user = tb_siswa.user_id', 'left')
-            // JOIN langsung pakai kelas_id (karena memang kolom itu yang ada)
             ->join('tb_kelas k', 'k.id_kelas = tb_siswa.kelas_id', 'left')
             ->where('tb_siswa.nisn', $nisn)
             ->first();
@@ -635,15 +634,206 @@ class OperatorController extends BaseController
             return redirect()->to(base_url('operator/data-siswa'));
         }
 
+        $siswaId = (int) $detailSiswa['id_siswa'];
+
+        // ===== Ambil TA aktif (fallback TA terbaru jika tidak ada yang aktif)
+        $taAktif = $this->TahunAjaran
+            ->where('is_active', 1)
+            ->orderBy('tahun', 'DESC')->orderBy('semester', 'DESC')
+            ->first();
+        if (! $taAktif) {
+            $taAktif = $this->TahunAjaran
+                ->orderBy('tahun', 'DESC')->orderBy('semester', 'DESC')
+                ->first();
+        }
+        $taAktifId = (int)($taAktif['id_tahun_ajaran'] ?? 0);
+
+        // ===== Riwayat tb_siswa_tahun untuk siswa ini (join ke tahun ajaran untuk label)
+        // pastikan sudah ada $this->SiswaTahunModel di __construct
+        $riwayatTahun = $this->SiswaTahunanModel
+            ->select('tb_siswa_tahun.*, ta.tahun, ta.semester, ta.is_active AS ta_is_active')
+            ->join('tb_tahun_ajaran ta', 'ta.id_tahun_ajaran = tb_siswa_tahun.tahun_ajaran_id', 'left')
+            ->where('tb_siswa_tahun.siswa_id', $siswaId)
+            ->orderBy('ta.tahun', 'DESC')->orderBy('ta.semester', 'DESC')
+            ->findAll();
+
+        // ===== Tentukan record yang akan diedit:
+        // 1) cari untuk TA aktif; 2) kalau tidak ada, pakai entri terbaru (riwayat pertama)
+        $siswaTahunEdit = null;
+        if ($taAktifId > 0) {
+            $siswaTahunEdit = $this->SiswaTahunanModel
+                ->where('siswa_id', $siswaId)
+                ->where('tahun_ajaran_id', $taAktifId)
+                ->first();
+        }
+        if (! $siswaTahunEdit && ! empty($riwayatTahun)) {
+            $siswaTahunEdit = $riwayatTahun[0]; // yang paling baru berdasar order di atas
+        }
+
+        // ===== Supply dropdown data untuk view:
+        // d_siswa: minimal data siswa ini saja (biar select terisi)
+        $d_siswa = [[
+            'id_siswa'  => $detailSiswa['id_siswa'],
+            'full_name' => $detailSiswa['full_name'] ?? ($detailSiswa['nama_lengkap'] ?? '—'),
+            'nisn'      => $detailSiswa['nisn'] ?? '',
+        ]];
+
+        // d_tahun: semua TA untuk opsi pindah/ubah jika perlu
+        $d_tahun = $this->TahunAjaran
+            ->orderBy('tahun', 'DESC')->orderBy('semester', 'DESC')
+            ->findAll();
+
         $data = [
-            'title'     => 'Detail siswa | SDN Talun 2 Kota Serang',
-            'sub_judul' => 'Detail Siswa/i',
-            'nav_link'  => 'Data Siswa',
-            'siswa'     => $detailSiswa,
+            'title'          => 'Detail siswa | SDN Talun 2 Kota Serang',
+            'sub_judul'      => 'Detail Siswa/i',
+            'nav_link'       => 'Data Siswa',
+            'siswa'          => $detailSiswa,
+
+            // tambahan utk form edit tb_siswa_tahun
+            'd_siswa'        => $d_siswa,
+            'd_tahun'        => $d_tahun,
+            'ta_aktif'       => $taAktif,
+            'riwayatTahun'   => $riwayatTahun,    // list riwayat (untuk ditampilkan tabel/accordion jika mau)
+            'siswaTahunEdit' => $siswaTahunEdit,  // record yg sedang diedit (bisa null)
         ];
 
         return view('pages/operator/detail_siswa', $data);
     }
+    public function aksi_edit_detail_siswa()
+    {
+        $req = $this->request;
+
+        // NISN sebagai sumber kebenaran siswa (bukan siswa_id dari POST)
+        $nisn = trim((string) $req->getPost('nisn'));
+
+        // Input utama
+        $idSt          = (int) $req->getPost('id_siswa_tahun'); // boleh kosong -> insert
+        $tahunAjaranId = (int) $req->getPost('tahun_ajaran_id');
+        $status        = strtolower(trim((string) $req->getPost('status')));
+        $tanggalMasuk  = $req->getPost('tanggal_masuk') ?: null;
+        $tanggalKeluar = $req->getPost('tanggal_keluar') ?: null;
+
+        // Validasi dasar
+        $rules = [
+            'nisn'            => 'required',
+            'tahun_ajaran_id' => 'required|is_natural_no_zero',
+            'status'          => 'required|in_list[aktif,keluar,lulus]',
+            'tanggal_masuk'   => 'permit_empty|valid_date',
+            'tanggal_keluar'  => 'permit_empty|valid_date',
+        ];
+        if (! $this->validate($rules)) {
+            session()->setFlashdata('sweet_error', 'Validasi gagal. Periksa kembali isian Anda.');
+            return redirect()->back()->withInput()->with('errors', $this->validator->getErrors());
+        }
+
+        // Aturan berbasis status
+        if (empty($tanggalMasuk)) {
+            session()->setFlashdata('sweet_error', 'Tanggal masuk wajib diisi.');
+            return redirect()->back()->withInput()->with('errors', ['tanggal_masuk' => 'Wajib diisi.']);
+        }
+        $tsMasuk  = strtotime($tanggalMasuk) ?: null;
+        $tsKeluar = $tanggalKeluar ? (strtotime($tanggalKeluar) ?: null) : null;
+        if (! $tsMasuk) {
+            session()->setFlashdata('sweet_error', 'Format tanggal masuk tidak valid.');
+            return redirect()->back()->withInput()->with('errors', ['tanggal_masuk' => 'Format tanggal tidak valid (YYYY-MM-DD).']);
+        }
+        if ($status === 'aktif') {
+            $tanggalKeluar = null;
+            $tsKeluar = null;
+        } else { // keluar/lulus
+            if (empty($tanggalKeluar) || ! $tsKeluar) {
+                session()->setFlashdata('sweet_error', 'Tanggal keluar wajib diisi untuk status Keluar/Lulus.');
+                return redirect()->back()->withInput()->with('errors', ['tanggal_keluar' => 'Wajib diisi saat status Keluar/Lulus.']);
+            }
+            if ($tsKeluar < $tsMasuk) {
+                session()->setFlashdata('sweet_error', 'Tanggal keluar tidak boleh lebih awal dari tanggal masuk.');
+                return redirect()->back()->withInput()->with('errors', ['tanggal_keluar' => 'Harus ≥ tanggal masuk.']);
+            }
+        }
+
+        // Resolve siswa dari NISN
+        $siswaRow = $this->SiswaModel
+            ->select('id_siswa, nisn, full_name')
+            ->where('nisn', $nisn)
+            ->first();
+        if (! $siswaRow) {
+            session()->setFlashdata('sweet_error', 'Siswa dengan NISN tersebut tidak ditemukan.');
+            return redirect()->back()->withInput();
+        }
+        $siswaId = (int) $siswaRow['id_siswa'];
+
+        // Valid Tahun Ajaran
+        $ta = $this->TahunAjaran->select('id_tahun_ajaran')->find($tahunAjaranId);
+        if (! $ta) {
+            session()->setFlashdata('sweet_error', 'Tahun ajaran tidak valid.');
+            return redirect()->back()->withInput();
+        }
+
+        // Anti-tamper saat update
+        if ($idSt > 0) {
+            $own = $this->SiswaTahunanModel
+                ->select('id_siswa_tahun, siswa_id')
+                ->where('id_siswa_tahun', $idSt)
+                ->first();
+            if (! $own) {
+                session()->setFlashdata('sweet_error', 'Record riwayat siswa tidak ditemukan.');
+                return redirect()->back()->withInput();
+            }
+            if ((int)$own['siswa_id'] !== $siswaId) {
+                session()->setFlashdata('sweet_error', 'Tidak diizinkan: record tidak sesuai dengan siswa (NISN) ini.');
+                return redirect()->back()->withInput();
+            }
+        }
+
+        // Cegah duplikat (siswa_id, tahun_ajaran_id)
+        $dupe = $this->SiswaTahunanModel
+            ->select('id_siswa_tahun')
+            ->where('siswa_id', $siswaId)
+            ->where('tahun_ajaran_id', $tahunAjaranId)
+            ->where('id_siswa_tahun !=', $idSt)
+            ->first();
+        if ($dupe) {
+            session()->setFlashdata('sweet_error', 'Data untuk siswa & tahun ajaran tersebut sudah ada.');
+            return redirect()->back()->withInput()->with('errors', [
+                'tahun_ajaran_id' => 'Riwayat siswa untuk tahun ajaran ini sudah tersimpan.',
+            ]);
+        }
+
+        // Payload final
+        $payload = [
+            'siswa_id'        => $siswaId,
+            'tahun_ajaran_id' => $tahunAjaranId,
+            'status'          => $status,
+            'tanggal_masuk'   => date('Y-m-d', $tsMasuk),
+            'tanggal_keluar'  => $tsKeluar ? date('Y-m-d', $tsKeluar) : null,
+        ];
+
+        try {
+            if ($idSt > 0) {
+                $this->SiswaTahunanModel->update($idSt, $payload);
+                session()->setFlashdata('sweet_success', 'Riwayat siswa (tahun ajaran) berhasil diperbarui.');
+            } else {
+                $this->SiswaTahunanModel->insert($payload);
+                session()->setFlashdata('sweet_success', 'Riwayat siswa (tahun ajaran) berhasil ditambahkan.');
+            }
+        } catch (\CodeIgniter\Database\Exceptions\DatabaseException $e) {
+            if ((int)$e->getCode() === 1062 || stripos($e->getMessage(), 'Duplicate') !== false) {
+                session()->setFlashdata('sweet_error', 'Duplikasi data: kombinasi siswa & tahun ajaran sudah ada.');
+                return redirect()->back()->withInput()->with('errors', [
+                    'tahun_ajaran_id' => 'Kombinasi siswa & tahun ajaran sudah ada.',
+                ]);
+            }
+            session()->setFlashdata('sweet_error', 'Gagal menyimpan: ' . $e->getMessage());
+            return redirect()->back()->withInput();
+        } catch (\Throwable $e) {
+            session()->setFlashdata('sweet_error', 'Gagal menyimpan: ' . $e->getMessage());
+            return redirect()->back()->withInput();
+        }
+
+        $to = $nisn ? base_url('operator/detail-siswa/' . $nisn) : base_url('operator/data-siswa');
+        return redirect()->to($to);
+    }
+
 
     // OperatorController.php
 
@@ -742,20 +932,21 @@ class OperatorController extends BaseController
         $uid     = (int) $session->get('id_user');
 
         $user = $this->UserModel->find($uid);
-        if (!$user) {
+        if (! $user) {
             return redirect()->back()->with('sweet_error', 'User tidak ditemukan.');
         }
 
-        // --- Ambil input mentah (untuk validasi) ---
+        // Input mentah
         $usernameIn = (string) $this->request->getPost('username');
         $emailIn    = (string) $this->request->getPost('email');
 
-        // --- RULES: username tanpa spasi, hanya A-Z a-z 0-9 . _ (sejalan dgn contohmu) ---
+        $isOperator = ((string) $session->get('role') === 'operator');
+
+        // RULES
         $rules = [
             'username' => [
                 'label'  => 'Username',
-                // no space → regex: hanya huruf/angka/titik/underscore
-                'rules'  => "required|min_length[4]|max_length[24]|regex_match[/^[A-Za-z0-9._]+$/]"
+                'rules'  => "required|trim|min_length[4]|max_length[24]|regex_match[/^[A-Za-z0-9._]+$/]"
                     . "|is_unique[tb_users.username,id_user,{$uid}]",
                 'errors' => [
                     'required'    => '{field} wajib diisi.',
@@ -767,7 +958,7 @@ class OperatorController extends BaseController
             ],
             'email' => [
                 'label'  => 'Email',
-                'rules'  => "required|valid_email|max_length[128]|is_unique[tb_users.email,id_user,{$uid}]",
+                'rules'  => "required|trim|valid_email|max_length[128]|is_unique[tb_users.email,id_user,{$uid}]",
                 'errors' => [
                     'required'    => '{field} wajib diisi.',
                     'valid_email' => 'Format {field} tidak valid.',
@@ -775,48 +966,49 @@ class OperatorController extends BaseController
                     'is_unique'   => '{field} sudah terdaftar.',
                 ],
             ],
-            'role' => [
+        ];
+
+        // Hanya operator yang wajib kirim role & status
+        if ($isOperator) {
+            $rules['role'] = [
                 'label'  => 'Role',
                 'rules'  => 'required|in_list[operator,guru,siswa]',
                 'errors' => [
                     'required' => '{field} wajib dipilih.',
                     'in_list'  => '{field} tidak valid. Pilih: operator, guru, atau siswa.',
                 ],
-            ],
-            'is_active' => [
+            ];
+            $rules['is_active'] = [
                 'label'  => 'Status',
                 'rules'  => 'required|in_list[0,1]',
                 'errors' => [
                     'required' => '{field} wajib dipilih.',
                     'in_list'  => '{field} tidak valid. Pilih Aktif (1) atau Nonaktif (0).',
                 ],
-            ],
-        ];
+            ];
+        }
 
+        // Validasi
         if (! $this->validate($rules)) {
             return redirect()->back()
                 ->withInput()
-                ->with('validation', $this->validator)
+                ->with('errors', $this->validator->getErrors())   // <-- view baca session('errors')
                 ->with('sweet_error', 'Periksa kembali input Anda.')
                 ->with('active_tab', 'account');
         }
 
-        // --- Payload dasar (tanpa mengubah role/status untuk non-operator) ---
+        // Payload (normalisasi)
         $payload = [
-            'id_user'    => $uid, // PK untuk Model::save()
-            // catatan: tidak auto-replace spasi→underscore agar user sadar aturan; sudah ditangkap regex di atas
+            'id_user'    => $uid,
             'username'   => trim($usernameIn),
             'email'      => strtolower(trim($emailIn)),
             'updated_at' => date('Y-m-d H:i:s'),
         ];
 
-        // hanya operator yang boleh ubah role & status
-        $roleLogin = (string) $session->get('role');
-        if (in_array($roleLogin, ['operator'], true)) {
+        if ($isOperator) {
             $payload['role']      = (string) $this->request->getPost('role');
             $payload['is_active'] = (int) $this->request->getPost('is_active');
         } else {
-            // user biasa: pertahankan nilai lama
             $payload['role']      = $user['role'];
             $payload['is_active'] = (int) $user['is_active'];
         }
@@ -824,19 +1016,32 @@ class OperatorController extends BaseController
         try {
             $this->UserModel->save($payload);
 
-            // opsional: sinkronkan session bila field yang tampil di header berubah
+            // Sinkronkan session yang dipakai UI header
             $session->set('username', $payload['username']);
             $session->set('email', $payload['email']);
         } catch (\Throwable $e) {
+            // 1062 = duplicate key (UNIQUE index di DB)
+            if (strpos($e->getMessage(), '1062') !== false || stripos($e->getMessage(), 'Duplicate entry') !== false) {
+                // Tampilkan di field email agar inline dengan form
+                return redirect()->back()
+                    ->withInput()
+                    ->with('errors', ['email' => 'Email sudah terdaftar.'])
+                    ->with('sweet_error', 'Periksa kembali input Anda.')
+                    ->with('active_tab', 'account');
+            }
+
             log_message('error', 'Profile update failed: {msg}', ['msg' => $e->getMessage()]);
-            return redirect()->back()->withInput()->with('sweet_error', 'Gagal menyimpan perubahan.');
+            return redirect()->back()
+                ->withInput()
+                ->with('sweet_error', 'Gagal menyimpan perubahan.');
         }
 
-        // arahkan sesuai kebutuhanmu
         return redirect()->to(base_url('operator/profile'))
             ->with('sweet_success', 'Profil berhasil diperbarui.')
             ->with('active_tab', 'account');
     }
+
+
 
 
     public function aksi_update_password()
@@ -2078,7 +2283,6 @@ class OperatorController extends BaseController
         // ---------- RULES ----------
         $rules = [
             'username' => [
-                // Tanpa spasi, hanya [A-Za-z0-9._], 4–24 karakter, unik
                 'rules'  => 'required|min_length[4]|max_length[24]|regex_match[/^[A-Za-z0-9._]+$/]|is_unique[tb_users.username]',
                 'errors' => [
                     'required'    => 'Username wajib diisi.',
@@ -2122,37 +2326,90 @@ class OperatorController extends BaseController
         if (! $this->validate($rules)) {
             session()->setFlashdata('sweet_error', 'Validasi gagal. Periksa kembali isian Anda.');
             return redirect()->back()->withInput()
-                ->with('errors', $this->validator->getErrors()); // <— WAJIB
+                ->with('errors', $this->validator->getErrors());
         }
 
-        // ---------- AMBIL INPUT ----------
-        $username  = trim((string) $req->getPost('username'));
-        $password  = (string) $req->getPost('password'); // akan di-hash
-        $email     = trim((string) $req->getPost('email'));
-        $role      = (string) $req->getPost('role');
-        $isActive  = (int) $req->getPost('is_active');
+        // ---------- AMBIL & NORMALISASI INPUT ----------
+        $username = trim((string) $req->getPost('username'));
+        $password = (string) $req->getPost('password');
+        $email    = strtolower(trim((string) $req->getPost('email'))); // normalisasi email ke lowercase
+        $role     = (string) $req->getPost('role');
+        $isActive = (int) $req->getPost('is_active');
 
-        // ---------- (Guard tambahan) ----------
-        // Jika ingin ekstra aman (mis. mencegah bypass), cek lagi di server:
+        // Guard ekstra format username
         if (!preg_match('/^[A-Za-z0-9._]+$/', $username)) {
             session()->setFlashdata('sweet_error', 'Username hanya boleh huruf, angka, titik (.) dan underscore (_), tanpa spasi.');
             return redirect()->back()->withInput();
         }
 
+        // ---------- DOUBLE-CHECK UNIQUENESS (server-side) ----------
+        // Cek apakah sudah ada user dengan username atau email ini
+        $existing = $this->UserModel
+            ->select('username,email')
+            ->groupStart()
+            ->where('username', $username)
+            ->orWhere('email', $email)
+            ->groupEnd()
+            ->first();
+
+        if ($existing) {
+            // Tentukan pesan yang tepat
+            if (strcasecmp($existing['username'] ?? '', $username) === 0 && strcasecmp($existing['email'] ?? '', $email) === 0) {
+                $msg = 'Username dan email sudah digunakan.';
+            } elseif (strcasecmp($existing['username'] ?? '', $username) === 0) {
+                $msg = 'Username sudah digunakan.';
+            } else {
+                $msg = 'Email sudah digunakan.';
+            }
+            session()->setFlashdata('sweet_error', $msg);
+            // Kirim balik error spesifik untuk menampilkan di form
+            return redirect()->back()->withInput()->with('errors', [
+                'username' => (stripos($msg, 'Username') !== false) ? 'Username sudah terdaftar.' : null,
+                'email'    => (stripos($msg, 'Email') !== false)    ? 'Email sudah terdaftar.'    : null,
+            ]);
+        }
+
         // ---------- HASH PASSWORD ----------
         $passwordHash = password_hash($password, PASSWORD_ARGON2ID);
 
-        // ---------- INSERT ----------
+        // ---------- INSERT DENGAN HANDLING RACE CONDITION ----------
+        $db = \Config\Database::connect();
+        $db->transStart(); // opsional tapi bagus untuk konsistensi
+
         $dataInsert = [
-            'username'   => $username,
-            'password'   => $passwordHash,
-            'email'      => $email,
-            'role'       => $role,
-            'is_active'  => $isActive,
+            'username'  => $username,
+            'password'  => $passwordHash,
+            'email'     => $email,
+            'role'      => $role,
+            'is_active' => $isActive,
         ];
 
         try {
             $this->UserModel->insert($dataInsert);
+            $db->transComplete();
+
+            if ($db->transStatus() === false) {
+                throw new \RuntimeException('Transaksi gagal.');
+            }
+        } catch (\CodeIgniter\Database\Exceptions\DatabaseException $e) {
+            // Tangkap duplicate key (MySQL: 1062)
+            if ((int) $e->getCode() === 1062 || stripos($e->getMessage(), 'Duplicate') !== false) {
+                // Cari kata kunci kolom yang bentrok dari pesan
+                $msg = 'Data bentrok: username/email sudah digunakan.';
+                if (stripos($e->getMessage(), 'username') !== false) {
+                    $msg = 'Username sudah digunakan.';
+                } elseif (stripos($e->getMessage(), 'email') !== false) {
+                    $msg = 'Email sudah digunakan.';
+                }
+                session()->setFlashdata('sweet_error', $msg);
+                return redirect()->back()->withInput()->with('errors', [
+                    'username' => (stripos($msg, 'Username') !== false) ? 'Username sudah terdaftar.' : null,
+                    'email'    => (stripos($msg, 'Email') !== false)    ? 'Email sudah terdaftar.'    : null,
+                ]);
+            }
+            // Error DB lain
+            session()->setFlashdata('sweet_error', 'Gagal menyimpan data user: ' . $e->getMessage());
+            return redirect()->back()->withInput();
         } catch (\Throwable $e) {
             session()->setFlashdata('sweet_error', 'Gagal menyimpan data user: ' . $e->getMessage());
             return redirect()->back()->withInput();
@@ -2161,6 +2418,7 @@ class OperatorController extends BaseController
         session()->setFlashdata('sweet_success', 'User baru berhasil ditambahkan.');
         return redirect()->to(base_url('operator/data-user'));
     }
+
 
     public function page_edit_user(string $idUserRaw)
     {
@@ -2199,15 +2457,16 @@ class OperatorController extends BaseController
             return redirect()->to(base_url('operator/data-user'));
         }
 
-        // --- Rules + pesan error (ID) ---
+        // --- Rules validator ---
         $rules = [
             'username' => [
-                'rules'  => "required|min_length[3]|max_length[50]|is_unique[tb_users.username,id_user,{$idUser}]",
+                'rules'  => "required|min_length[3]|max_length[50]|regex_match[/^[A-Za-z0-9._]+$/]|is_unique[tb_users.username,id_user,{$idUser}]",
                 'errors' => [
-                    'required'   => 'Username wajib diisi.',
-                    'min_length' => 'Username minimal 3 karakter.',
-                    'max_length' => 'Username maksimal 50 karakter.',
-                    'is_unique'  => 'Username sudah digunakan.',
+                    'required'    => 'Username wajib diisi.',
+                    'min_length'  => 'Username minimal 3 karakter.',
+                    'max_length'  => 'Username maksimal 50 karakter.',
+                    'regex_match' => 'Username hanya huruf/angka/titik/underscore.',
+                    'is_unique'   => 'Username sudah digunakan.',
                 ],
             ],
             'password' => [
@@ -2219,9 +2478,9 @@ class OperatorController extends BaseController
             'email' => [
                 'rules'  => "required|valid_email|is_unique[tb_users.email,id_user,{$idUser}]",
                 'errors' => [
-                    'required'   => 'Email wajib diisi.',
+                    'required'    => 'Email wajib diisi.',
                     'valid_email' => 'Format email tidak valid.',
-                    'is_unique'  => 'Email sudah digunakan.',
+                    'is_unique'   => 'Email sudah digunakan.',
                 ],
             ],
             'role' => [
@@ -2235,7 +2494,7 @@ class OperatorController extends BaseController
                 'rules'  => 'required|in_list[0,1]',
                 'errors' => [
                     'required' => 'Status aktif wajib diisi.',
-                    'in_list'  => 'Status aktif hanya boleh 0 (Nonaktif) atau 1 (Aktif).',
+                    'in_list'  => 'Status aktif hanya 0 (Nonaktif) atau 1 (Aktif).',
                 ],
             ],
         ];
@@ -2245,12 +2504,44 @@ class OperatorController extends BaseController
             return redirect()->back()->withInput()->with('errors', $this->validator->getErrors());
         }
 
-        // --- Ambil input ---
+        // --- Ambil input & normalisasi ---
         $username = trim((string) $this->request->getPost('username'));
         $email    = strtolower(trim((string) $this->request->getPost('email')));
         $role     = (string) $this->request->getPost('role');
         $isActive = (int) $this->request->getPost('is_active');
         $password = (string) $this->request->getPost('password'); // opsional
+
+        // Guard ekstra format username
+        if (! preg_match('/^[A-Za-z0-9._]+$/', $username)) {
+            session()->setFlashdata('sweet_error', 'Username hanya boleh huruf, angka, titik (.) dan underscore (_), tanpa spasi.');
+            return redirect()->back()->withInput();
+        }
+
+        // --- Double-check duplikasi selain diri sendiri ---
+        $conflict = $this->UserModel
+            ->select('id_user, username, email')
+            ->groupStart()
+            ->where('username', $username)
+            ->orWhere('email', $email)
+            ->groupEnd()
+            ->where('id_user !=', $idUser)
+            ->first();
+
+        if ($conflict) {
+            $msg = 'Data bentrok: ';
+            if (strcasecmp($conflict['username'] ?? '', $username) === 0 && strcasecmp($conflict['email'] ?? '', $email) === 0) {
+                $msg .= 'username dan email sudah digunakan.';
+            } elseif (strcasecmp($conflict['username'] ?? '', $username) === 0) {
+                $msg .= 'username sudah digunakan.';
+            } else {
+                $msg .= 'email sudah digunakan.';
+            }
+            session()->setFlashdata('sweet_error', $msg);
+            return redirect()->back()->withInput()->with('errors', [
+                'username' => (stripos($msg, 'username') !== false) ? 'Username sudah terdaftar.' : null,
+                'email'    => (stripos($msg, 'email') !== false)    ? 'Email sudah terdaftar.'    : null,
+            ]);
+        }
 
         // --- Siapkan data update ---
         $dataUpdate = [
@@ -2259,23 +2550,107 @@ class OperatorController extends BaseController
             'role'      => $role,
             'is_active' => $isActive,
         ];
-
-        // Update password hanya jika diisi
         if ($password !== '') {
             $dataUpdate['password'] = password_hash($password, PASSWORD_ARGON2ID);
         }
 
-        // --- Eksekusi update ---
+        // Early-exit jika tidak ada perubahan
+        $noChange = true;
+        foreach ($dataUpdate as $k => $v) {
+            if (($existing[$k] ?? null) !== $v) {
+                $noChange = false;
+                break;
+            }
+        }
+        if ($noChange) {
+            session()->setFlashdata('sweet_info', 'Tidak ada perubahan yang disimpan.');
+            return redirect()->to(base_url('operator/data-user'));
+        }
+
+        // --- Update tb_users ---
         try {
             $this->UserModel->update($idUser, $dataUpdate);
+        } catch (\CodeIgniter\Database\Exceptions\DatabaseException $e) {
+            if ((int) $e->getCode() === 1062 || stripos($e->getMessage(), 'Duplicate') !== false) {
+                $msg = 'Gagal menyimpan: username/email sudah digunakan.';
+                if (stripos($e->getMessage(), 'username') !== false) $msg = 'Gagal menyimpan: username sudah digunakan.';
+                if (stripos($e->getMessage(), 'email') !== false)    $msg = 'Gagal menyimpan: email sudah digunakan.';
+                session()->setFlashdata('sweet_error', $msg);
+                return redirect()->back()->withInput()->with('errors', [
+                    'username' => (stripos($msg, 'username') !== false) ? 'Username sudah terdaftar.' : null,
+                    'email'    => (stripos($msg, 'email') !== false)    ? 'Email sudah terdaftar.'    : null,
+                ]);
+            }
+            session()->setFlashdata('sweet_error', 'Gagal mengubah data user: ' . $e->getMessage());
+            return redirect()->back()->withInput();
         } catch (\Throwable $e) {
             session()->setFlashdata('sweet_error', 'Gagal mengubah data user: ' . $e->getMessage());
             return redirect()->back()->withInput();
         }
 
+        // --- SYNC tb_guru.status_active & tb_guru_tahun (khusus GURU) ---
+        try {
+            if ($role === 'guru' || ($existing['role'] ?? '') === 'guru') {
+                // Temukan guru via user_id
+                $guruRow = $this->ModelGuru
+                    ->select('id_guru, status_active')
+                    ->where('user_id', $idUser)
+                    ->first();
+
+                if ($guruRow) {
+                    $guruId     = (int) $guruRow['id_guru'];
+                    $wasActive  = (int) ($existing['is_active'] ?? 0);
+                    $nowJakarta = (new \DateTime('now', new \DateTimeZone('Asia/Jakarta')))->format('Y-m-d');
+
+                    // 1) Samakan status_active di tb_guru dengan is_active tb_users
+                    //    (Permintaanmu: jika users.is_active = 0 → guru.status_active = 0; saat 1 → set 1 agar seiras)
+                    $this->ModelGuru->update($guruId, ['status_active' => $isActive]);
+
+                    // 2) Kelola tb_guru_tahun (SKIP jika belum ada baris)
+                    $GuruTahun = $this->GuruTahunModel ?? new \App\Models\GuruTahunanModel();
+
+                    $hasRows = $GuruTahun->where('guru_id', $guruId)->countAllResults();
+
+                    if ($hasRows > 0) {
+                        if ($wasActive === 1 && $isActive === 0) {
+                            // Aktif → Nonaktif: set status nonaktif + tanggal_keluar = hari ini
+                            $GuruTahun->where('guru_id', $guruId)
+                                ->set([
+                                    'status'         => 'nonaktif',   // pakai '0' jika skema numerik
+                                    'tanggal_keluar' => $nowJakarta,
+                                ])->update();
+                        } elseif ($wasActive === 0 && $isActive === 1) {
+                            // Nonaktif → Aktif: set status aktif + clear tanggal_keluar
+                            $GuruTahun->where('guru_id', $guruId)
+                                ->set([
+                                    'status'         => 'aktif',      // pakai '1' jika skema numerik
+                                    'tanggal_keluar' => null,
+                                ])->update();
+
+                            // Opsional: isi tanggal_masuk bila kosong
+                            $GuruTahun->where('guru_id', $guruId)
+                                ->where('(tanggal_masuk IS NULL OR tanggal_masuk = "")', null, false)
+                                ->set(['tanggal_masuk' => $nowJakarta])
+                                ->update();
+                        } else {
+                            // Tidak ada transisi → sinkronkan status saja (tanpa mengubah tanggal)
+                            $GuruTahun->where('guru_id', $guruId)
+                                ->set(['status' => ($isActive === 1 ? 'aktif' : 'nonaktif')])
+                                ->update();
+                        }
+                    }
+                    // Jika $hasRows == 0 → SKIP sesuai kesepakatan (tidak insert apa pun)
+                }
+            }
+        } catch (\Throwable $e) {
+            log_message('error', 'SYNC guru/guru_tahun gagal untuk user_id=' . $idUser . ' | ' . $e->getMessage());
+        }
+
         session()->setFlashdata('sweet_success', 'Data user berhasil diperbarui.');
         return redirect()->to(base_url('operator/data-user'));
     }
+
+
     public function aksi_delete_data_user(string $idUserRaw)
     {
         $idUser = (int) $idUserRaw;
@@ -3864,35 +4239,66 @@ class OperatorController extends BaseController
         }
     }
 
-
-
     // Lapiran Data Siswa
     public function page_laporan_d_siswa()
     {
         $req        = $this->request;
-        $q          = trim((string)($req->getGet('q') ?? ''));               // cari nama/NISN
-        $idTA       = trim((string)($req->getGet('tahunajaran') ?? ''));     // id_tahun_ajaran (opsional)
-        $kategori   = strtoupper((string)($req->getGet('kategori') ?? ''));  // UTS/UAS (opsional)
-        $gender     = strtoupper(trim((string)($req->getGet('gender') ?? ''))); // 'L' / 'P' / ''
+        $q          = trim((string)($req->getGet('q') ?? ''));                   // cari nama/NISN
+        $idTA       = trim((string)($req->getGet('tahunajaran') ?? ''));         // id_tahun_ajaran (opsional)
+        $kategori   = strtoupper((string)($req->getGet('kategori') ?? ''));      // UTS/UAS (opsional) — belum dipakai
+        $gender     = strtoupper(trim((string)($req->getGet('gender') ?? '')));  // 'L' / 'P' / ''
+        $idKelas    = trim((string)($req->getGet('kelas') ?? ''));               // id_kelas (opsional)
 
-        // List TA untuk dropdown
+        // ===== List TA untuk dropdown
         $listTA = $this->TahunAjaran
             ->select('id_tahun_ajaran, tahun, semester, is_active')
             ->orderBy('tahun', 'DESC')
             ->orderBy('semester', 'ASC')
             ->findAll();
 
-        // Query utama
+        // ===== List Kelas untuk dropdown (opsional: disaring per TA jika skema mendukung)
+        // Pastikan instance KelasModel ada
+        $KelasModel = $this->KelasModel ?? new \App\Models\KelasModel();
+
+        // Cek apakah tb_kelas punya kolom 'tahun_ajaran_id' dan 'tingkat'
+        $db = \Config\Database::connect();
+        $kelasFields = [];
+        try {
+            $kelasFields = $db->getFieldNames('tb_kelas');
+        } catch (\Throwable $e) {
+            $kelasFields = [];
+        }
+        $hasTAonKelas = in_array('tahun_ajaran_id', $kelasFields, true);
+        $hasTingkat   = in_array('tingkat', $kelasFields, true);
+
+        $kelasBuilder = $KelasModel
+            ->select('id_kelas, nama_kelas' . ($hasTingkat ? ', tingkat' : ''));
+
+        if ($idTA !== '' && ctype_digit($idTA) && $hasTAonKelas) {
+            $kelasBuilder->where('tahun_ajaran_id', (int)$idTA);
+        }
+
+        if ($hasTingkat) {
+            $kelasBuilder->orderBy('tingkat', 'ASC');
+        }
+        $kelasBuilder->orderBy('nama_kelas', 'ASC');
+
+        $listKelas = $kelasBuilder->findAll();
+
+        // ===== Query utama
         $builder = $this->SiswaTahunanModel
             ->select("
             id_siswa_tahun, siswa_id, tahun_ajaran_id, status, tanggal_masuk, tanggal_keluar,
+            kelas_id,
             s.id_siswa, s.nisn, s.full_name, s.gender,
             u.username AS user_name, u.is_active AS user_active,
-            ta.tahun AS tahun_ajaran, ta.semester AS semester, ta.is_active AS ta_active
+            ta.tahun AS tahun_ajaran, ta.semester AS semester, ta.is_active AS ta_active,
+            k.nama_kelas
         ", false)
             ->join('tb_siswa s', 's.id_siswa = siswa_id', 'left')
             ->join('tb_users u', 'u.id_user = s.user_id', 'left')
-            ->join('tb_tahun_ajaran ta', 'ta.id_tahun_ajaran = tahun_ajaran_id', 'left');
+            ->join('tb_tahun_ajaran ta', 'ta.id_tahun_ajaran = tahun_ajaran_id', 'left')
+            ->join('tb_kelas k', 'k.id_kelas = kelas_id', 'left');
 
         // Filter q (nama / NISN)
         if ($q !== '') {
@@ -3912,11 +4318,18 @@ class OperatorController extends BaseController
             $builder->where('s.gender', $gender);
         }
 
+        // Filter Kelas (valid digit)
+        if ($idKelas !== '' && ctype_digit($idKelas)) {
+            $builder->where('kelas_id', (int)$idKelas);
+        }
+
         // (opsional) filter kategori nilai...
 
-        $rows = $builder->orderBy('s.full_name', 'ASC')->findAll();
+        // Urutan: tingkat (jika ada), nama_kelas, nama siswa
+        if ($hasTingkat) $builder->orderBy('k.tingkat', 'ASC');
+        $rows = $builder->orderBy('k.nama_kelas', 'ASC')->orderBy('s.full_name', 'ASC')->findAll();
 
-        // Ringkasan
+        // ===== Ringkasan
         $SiswaAktif = $SiswaNonAktif = $EnrolAktif = $EnrolNonAktif = 0;
         foreach ($rows as $r) {
             ((int)($r['user_active'] ?? 0) === 1) ? $SiswaAktif++ : $SiswaNonAktif++;
@@ -3932,8 +4345,10 @@ class OperatorController extends BaseController
             'q'             => $q,
             'tahunajaran'   => $idTA,
             'kategori'      => $kategori,
-            'gender'        => $gender,     // ← KIRIM KE VIEW (buat selected option)
+            'gender'        => $gender,
+            'kelas'         => $idKelas,     // untuk selected option di view
             'listTA'        => $listTA,
+            'listKelas'     => $listKelas,   // untuk dropdown kelas di view
             'SiswaAktif'    => $SiswaAktif,
             'SiswaNonAktif' => $SiswaNonAktif,
             'EnrolAktif'    => $EnrolAktif,
@@ -3941,7 +4356,6 @@ class OperatorController extends BaseController
             'totalSiswa'    => count($rows),
         ]);
     }
-
 
     public function page_tambah_laporan_siswa(?string $param = null)
     {
@@ -4748,10 +5162,11 @@ class OperatorController extends BaseController
     public function page_laporan_nilai_siswa()
     {
         $req      = $this->request;
-        $q        = trim((string)($req->getGet('q') ?? ''));             // cari nama/NISN
-        $idTA     = trim((string)($req->getGet('tahunajaran') ?? ''));   // id_tahun_ajaran (opsional)
-        $kodeKat  = trim((string)($req->getGet('kategori') ?? ''));      // opsional: UTS/UAS
-        $idMapel  = trim((string)($req->getGet('mapel') ?? ''));         // opsional: id_mapel
+        $q        = trim((string)($req->getGet('q') ?? ''));            // cari nama/NISN
+        $idTA     = trim((string)($req->getGet('tahunajaran') ?? ''));  // id_tahun_ajaran
+        $kodeKat  = trim((string)($req->getGet('kategori') ?? ''));     // UTS/UAS
+        $idMapel  = trim((string)($req->getGet('mapel') ?? ''));        // id_mapel
+        $idKelas  = trim((string)($req->getGet('kelas') ?? ''));        // <-- NEW: id_kelas
 
         $nilaiModel = new \App\Models\NilaiSiswaModel();  // tb_nilai_siswa
 
@@ -4770,6 +5185,10 @@ class OperatorController extends BaseController
             s.nisn             AS siswa_nisn,
             s.full_name        AS siswa_nama,
             s.gender           AS siswa_gender,
+            s.kelas_id         AS kelas_id,
+
+            kls.nama_kelas     AS kelas_nama,
+            kls.tingkat        AS kelas_tingkat,
 
             ta.id_tahun_ajaran AS ta_id,
             ta.tahun           AS tahun_ajaran,
@@ -4783,6 +5202,7 @@ class OperatorController extends BaseController
             k.nama             AS kategori_nama
         ", false)
             ->join('tb_siswa s', 's.id_siswa = ns.siswa_id', 'left')
+            ->join('tb_kelas kls', 'kls.id_kelas = s.kelas_id', 'left')
             ->join('tb_tahun_ajaran ta', 'ta.id_tahun_ajaran = ns.tahun_ajaran_id', 'left')
             ->join('tb_mapel m', 'm.id_mapel = ns.mapel_id', 'left')
             ->join('tb_kategori_nilai k', 'k.id_kategori = ns.kategori_id', 'left');
@@ -4795,25 +5215,28 @@ class OperatorController extends BaseController
                 ->groupEnd();
         }
 
-        // Filter Tahun Ajaran (id)
+        // Filter Tahun Ajaran
         if ($idTA !== '' && ctype_digit($idTA)) {
             $builder->where('ns.tahun_ajaran_id', (int)$idTA);
         }
 
-        // (Opsional) Filter Kategori: UTS/UAS via kode
+        // Filter Kategori UTS/UAS
         if ($kodeKat !== '') {
             $builder->where('k.kode', strtoupper($kodeKat));
         }
 
-        // (Opsional) Filter Mapel: id_mapel
+        // Filter Mapel
         if ($idMapel !== '' && ctype_digit($idMapel)) {
             $builder->where('ns.mapel_id', (int)$idMapel);
         }
 
-        // Hilangkan duplikasi akibat join — kunci ke PK nilai
+        // NEW: Filter Kelas
+        if ($idKelas !== '' && ctype_digit($idKelas)) {
+            $builder->where('s.kelas_id', (int)$idKelas);
+        }
+
         $builder->groupBy('ns.id_nilai');
 
-        // Urutkan: Nama siswa → Mapel → Kategori (UTS/UAS) → tanggal
         $rows = $builder
             ->orderBy('s.full_name', 'ASC')
             ->orderBy('m.nama', 'ASC')
@@ -4822,7 +5245,7 @@ class OperatorController extends BaseController
             ->get()
             ->getResultArray();
 
-        // Ringkasan sederhana
+        // Ringkasan
         $totalNilai = count($rows);
         $distinctSiswa = [];
         foreach ($rows as $r) {
@@ -4830,66 +5253,72 @@ class OperatorController extends BaseController
         }
         $totalSiswa = count($distinctSiswa);
 
-        // ===== Ambil opsi dropdown dari DB =====
+        // Opsi dropdown
         $db = \Config\Database::connect();
 
-        // Tahun Ajaran
         $listTA = $db->table('tb_tahun_ajaran')
             ->select('id_tahun_ajaran, tahun, semester, is_active')
-            ->orderBy('tahun', 'DESC')
-            ->orderBy('semester', 'ASC')
-            ->get()
-            ->getResultArray();
+            ->orderBy('tahun', 'DESC')->orderBy('semester', 'ASC')
+            ->get()->getResultArray();
 
-        // Kategori (UTS/UAS) - case-insensitive
         $listKat = $db->table('tb_kategori_nilai')
             ->select('id_kategori, kode, nama')
-            ->where('UPPER(kode) IN ("UTS","UAS")', null, false) // raw agar aman untuk semua case
+            ->where('UPPER(kode) IN ("UTS","UAS")', null, false)
             ->orderBy('kode', 'ASC')
-            ->get()
-            ->getResultArray();
+            ->get()->getResultArray();
 
-        // Mapel
         $listMapel = $db->table('tb_mapel')
             ->select('id_mapel, nama, kode')
             ->orderBy('nama', 'ASC')
-            ->get()
-            ->getResultArray();
+            ->get()->getResultArray();
+
+        // NEW: daftar kelas
+        $listKelas = $db->table('tb_kelas')
+            ->select('id_kelas, nama_kelas, tingkat')
+            ->orderBy('tingkat', 'ASC')
+            ->orderBy('nama_kelas', 'ASC')
+            ->get()->getResultArray();
 
         return view('pages/operator/laporan_nilai_siswa', [
-            'title'         => 'Laporan Nilai Siswa | SDN Talun 2 Kota Serang',
-            'sub_judul'     => 'Laporan Nilai Siswa',
-            'nav_link'      => 'Laporan Nilai',
-            'd_nilai'       => $rows,
-            'q'             => $q,
-            'tahunajaran'   => $idTA,
-            'kategori'      => $kodeKat,
-            'mapel'         => $idMapel,
-            'totalNilai'    => $totalNilai,
-            'totalSiswa'    => $totalSiswa,
+            'title'       => 'Laporan Nilai Siswa | SDN Talun 2 Kota Serang',
+            'sub_judul'   => 'Laporan Nilai Siswa',
+            'nav_link'    => 'Laporan Nilai',
+            'd_nilai'     => $rows,
+            'q'           => $q,
+            'tahunajaran' => $idTA,
+            'kategori'    => $kodeKat,
+            'mapel'       => $idMapel,
+            'kelas'       => $idKelas,     // NEW: kirim ke view
+            'totalNilai'  => $totalNilai,
+            'totalSiswa'  => $totalSiswa,
 
             // opsi dropdown
-            'listTA'        => $listTA,
-            'listKat'       => $listKat,
-            'listMapel'     => $listMapel,
+            'listTA'      => $listTA,
+            'listKat'     => $listKat,
+            'listMapel'   => $listMapel,
+            'listKelas'   => $listKelas,   // NEW: dropdown kelas
         ]);
     }
+
 
 
     public function page_tambah_nilai_siswa()
     {
         $req     = $this->request;
-        $q       = trim((string)($req->getGet('q') ?? ''));            // cari nama/NISN
+        $q       = trim((string)($req->getGet('q') ?? ''));            // cari nama/NISN atau "kelas 1"
         $idTA    = trim((string)($req->getGet('tahunajaran') ?? ''));  // id_tahun_ajaran (opsional)
         $kodeKat = trim((string)($req->getGet('kategori') ?? ''));     // opsional: UTS/UAS
         $idMapel = trim((string)($req->getGet('mapel') ?? ''));        // opsional: id_mapel
+        $idKelas = trim((string)($req->getGet('kelas') ?? ''));        // id_kelas (opsional)
 
         $nilaiModel = new \App\Models\NilaiSiswaModel();
 
         // ====== LIST DATA (tabel utama + join alias) ======
         $builder = $nilaiModel->builder()->from('tb_nilai_siswa ns')
             ->select("
-            ns.id_nilai, ns.siswa_id, ns.tahun_ajaran_id, ns.mapel_id, ns.kategori_id, ns.skor, ns.tanggal, ns.keterangan,
+            ns.id_nilai, ns.siswa_id, ns.tahun_ajaran_id, ns.mapel_id, ns.kategori_id, ns.skor,
+            DATE_FORMAT(ns.tanggal, '%Y-%m-%d') AS tanggal,  /* konsisten format */
+            ns.keterangan,
 
             s.nisn      AS siswa_nisn,
             s.full_name AS siswa_nama,
@@ -4902,15 +5331,16 @@ class OperatorController extends BaseController
 
             k.kode      AS kategori_kode,
             k.nama      AS kategori_nama
-        ")
+        ", false)
             ->join('tb_siswa s', 's.id_siswa = ns.siswa_id', 'left')
             ->join('tb_tahun_ajaran ta', 'ta.id_tahun_ajaran = ns.tahun_ajaran_id', 'left')
             ->join('tb_mapel m', 'm.id_mapel = ns.mapel_id', 'left')
             ->join('tb_kategori_nilai k', 'k.id_kategori = ns.kategori_id', 'left');
 
-        // Selalu batasi TA aktif (ingat: kolom di DB adalah is_active)
+        // Batasi TA aktif (melalui join TA)
         $builder->where('ta.is_active', 1);
 
+        // Filter pencarian nama/NISN
         if ($q !== '') {
             $builder->groupStart()
                 ->like('s.full_name', $q)
@@ -4918,18 +5348,25 @@ class OperatorController extends BaseController
                 ->groupEnd();
         }
 
+        // Filter Tahun Ajaran
         if ($idTA !== '' && ctype_digit($idTA)) {
-            // Tetap batasi ke TA aktif + id yang dipilih
             $builder->where('ns.tahun_ajaran_id', (int)$idTA);
         }
 
+        // Filter Kategori (by kode UTS/UAS)
         if ($kodeKat !== '') {
             $builder->where('k.kode', strtoupper($kodeKat));
         }
+
+        // Filter Mapel
         if ($idMapel !== '' && ctype_digit($idMapel)) {
             $builder->where('ns.mapel_id', (int)$idMapel);
         }
 
+        // PENTING: kunci ke baris unik nilai supaya tidak dobel karena join
+        $builder->groupBy('ns.id_nilai');
+
+        // Urutkan
         $rows = $builder
             ->orderBy('s.full_name', 'ASC')
             ->orderBy('m.nama', 'ASC')
@@ -4946,18 +5383,54 @@ class OperatorController extends BaseController
         $totalSiswa = count($distinctSiswa);
 
         // ====== DROPDOWN ======
-        // Siswa
+        $db = \Config\Database::connect();
+
+        // Dropdown kelas
+        $optKelas = $db->table('tb_kelas')
+            ->select('id_kelas, nama_kelas, tingkat')
+            ->orderBy('tingkat', 'ASC')->orderBy('nama_kelas', 'ASC')
+            ->get()->getResultArray();
+
+        // Siswa (filter by kelas & q yang paham "kelas 1")
         $siswaModel = new \App\Models\SiswaModel();
-        $siswaQ = $siswaModel->select('id_siswa, nisn, full_name')->orderBy('full_name', 'ASC');
-        if ($q !== '') {
-            $siswaQ->groupStart()->like('full_name', $q)->orLike('nisn', $q)->groupEnd();
+        $siswaQ = $siswaModel->from('tb_siswa s')
+            ->select('s.id_siswa, s.nisn, s.full_name, s.kelas_id, k.nama_kelas, k.tingkat')
+            ->join('tb_kelas k', 'k.id_kelas = s.kelas_id', 'left');
+
+        // Filter kelas pilihan
+        if ($idKelas !== '' && ctype_digit($idKelas)) {
+            $siswaQ->where('s.kelas_id', (int)$idKelas);
         }
-        $optSiswa = $siswaQ->findAll(500);
+
+        // Filter q: nama/nisn/kelas + deteksi "kelas X"
+        if ($q !== '') {
+            $tingkatDariQ = null;
+            if (preg_match('/\b(kelas|kls)\s*([1-6])\b/i', $q, $m)) {
+                $tingkatDariQ = (int)$m[2];
+            }
+
+            $siswaQ->groupStart()
+                ->like('s.full_name', $q)
+                ->orLike('s.nisn', $q)
+                ->orLike('k.nama_kelas', $q);
+
+            if ($tingkatDariQ !== null) {
+                $siswaQ->orWhere('k.tingkat', $tingkatDariQ);
+            }
+            $siswaQ->groupEnd();
+        }
+
+        // PENTING: dedup siswa dari join (kalau ada kemungkinan dobel)
+        $siswaQ->groupBy('s.id_siswa')
+            ->orderBy('k.tingkat', 'ASC')
+            ->orderBy('s.full_name', 'ASC');
+
+        $optSiswa = $siswaQ->findAll(1000);
 
         // Tahun Ajaran (hanya aktif)
         $taModel = new \App\Models\TahunAjaranModel();
         $optTA   = $taModel->select('id_tahun_ajaran, tahun, semester')
-            ->where('is_active', 1) // <— kolom yang benar
+            ->where('is_active', 1)
             ->orderBy('tahun', 'DESC')
             ->orderBy('semester', 'ASC')
             ->findAll(200);
@@ -4972,7 +5445,6 @@ class OperatorController extends BaseController
         $optKategori = $katModel->select('id_kategori, kode, nama')
             ->orderBy('nama', 'ASC')->findAll(100);
 
-        // allowedFields
         $allowedFields = method_exists($nilaiModel, 'getAllowedFields')
             ? $nilaiModel->getAllowedFields()
             : ['siswa_id', 'tahun_ajaran_id', 'mapel_id', 'kategori_id', 'skor', 'tanggal', 'keterangan'];
@@ -4982,7 +5454,6 @@ class OperatorController extends BaseController
             'sub_judul'     => 'Data Nilai Siswa',
             'nav_link'      => 'Nilai Siswa',
 
-            // data tabel
             'd_nilai'       => $rows,
 
             // filter GET
@@ -4990,6 +5461,7 @@ class OperatorController extends BaseController
             'tahunajaran'   => $idTA,
             'kategori'      => $kodeKat,
             'mapel'         => $idMapel,
+            'kelas'         => $idKelas,
 
             // ringkasan
             'totalNilai'    => $totalNilai,
@@ -4997,7 +5469,8 @@ class OperatorController extends BaseController
 
             // dropdown sources
             'optSiswa'      => $optSiswa,
-            'optTA'         => $optTA,     // hanya TA aktif (ganjil = 1)
+            'optKelas'      => $optKelas,
+            'optTA'         => $optTA,
             'optMapel'      => $optMapel,
             'optKategori'   => $optKategori,
 
@@ -5005,6 +5478,8 @@ class OperatorController extends BaseController
             'allowedFields' => $allowedFields,
         ]);
     }
+
+
 
 
     public function aksi_tambah_nilai_siswa()

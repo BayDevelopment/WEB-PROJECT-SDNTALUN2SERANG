@@ -94,6 +94,41 @@
         </div>
 
         <div class="card-body">
+            <!-- ===== FILTER BAR (GET) : Search + Kelas (hanya kelas yang diampu guru) ===== -->
+            <form id="filterBar" method="get" class="row g-2 align-items-center mb-3" role="search" autocomplete="off">
+                <div class="col-12 col-md-6">
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
+                        <input type="text"
+                            name="q"
+                            value="<?= esc($q ?? '') ?>"
+                            class="form-control"
+                            placeholder="Cari nama, NISN, atau User ID..."
+                            aria-label="Pencarian siswa">
+                    </div>
+                </div>
+
+                <div class="col-6 col-md-3">
+                    <?php $kelasSel = (string)($kelas ?? ''); ?>
+                    <select name="kelas" class="form-select form-select-sm" aria-label="Filter Kelas">
+                        <option value="" <?= $kelasSel === '' ? 'selected' : '' ?>>Semua Kelas (yang Anda ampu)</option>
+                        <?php foreach (($optKelas ?? []) as $kl): ?>
+                            <?php $kid = (string)($kl['id_kelas'] ?? ''); ?>
+                            <option value="<?= esc($kid) ?>" <?= $kelasSel === $kid ? 'selected' : '' ?>>
+                                <?= esc($kl['nama_kelas'] ?? ('Kelas #' . $kid)) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="col-6 col-md-3 d-grid">
+                    <button class="btn btn-sm btn-primary" type="submit">
+                        Terapkan Filter
+                    </button>
+                </div>
+            </form>
+
+            <!-- ===== FORM POST: Tambah Nilai ===== -->
             <form id="formTambahNilai"
                 action="<?= site_url('guru/laporan/tambah-nilai') ?>"
                 method="post"
@@ -107,7 +142,7 @@
                 <?= csrf_field() ?>
 
                 <div class="row g-3 mb-3">
-                    <!-- siswa_id -->
+                    <!-- siswa_id (options sudah tampilkan User ID & Kelas) -->
                     <div class="col-md-6">
                         <label for="siswa_id" class="form-label">Siswa</label>
                         <select
@@ -115,9 +150,18 @@
                             id="siswa_id" name="siswa_id" aria-describedby="siswa_idFeedback" required>
                             <option value="" disabled <?= old('siswa_id') ? '' : 'selected' ?>>— Pilih Siswa —</option>
                             <?php foreach (($optSiswa ?? []) as $s): ?>
-                                <option value="<?= esc($s['id_siswa']) ?>"
-                                    <?= old('siswa_id') == ($s['id_siswa'] ?? null) ? 'selected' : '' ?>>
-                                    <?= esc(($s['full_name'] ?? '-') . ' — ' . ($s['nisn'] ?? '-')) ?>
+                                <?php
+                                $sid   = (int)($s['id_siswa'] ?? 0);
+                                $nama  = (string)($s['full_name'] ?? '-');
+                                $nisn  = (string)($s['nisn'] ?? '-');
+                                $uid   = (string)($s['user_id'] ?? '-');      // <-- dari controller
+                                $kls   = (string)($s['nama_kelas'] ?? '-');   // <-- dari controller
+                                ?>
+                                <option value="<?= esc($sid) ?>"
+                                    data-user-id="<?= esc($uid) ?>"
+                                    data-kelas="<?= esc($kls) ?>"
+                                    <?= old('siswa_id') == $sid ? 'selected' : '' ?>>
+                                    <?= esc("$nama — $nisn — [UID $uid] — (Kelas: $kls)") ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>
@@ -145,7 +189,7 @@
                         <?php endif; ?>
                     </div>
 
-                    <!-- mapel_id -->
+                    <!-- mapel_id (list sudah otomatis menyusut saat kelas difilter di GET) -->
                     <div class="col-md-6">
                         <label for="mapel_id" class="form-label">Mata Pelajaran</label>
                         <select
@@ -162,9 +206,12 @@
                         <?php if ($hasErr('mapel_id')): ?>
                             <div id="mapelFeedback" class="invalid-feedback d-block"><?= esc($getErr('mapel_id')) ?></div>
                         <?php endif; ?>
+                        <div class="form-text">
+                            Daftar mapel di atas otomatis mengikuti kelas terpilih pada filter.
+                        </div>
                     </div>
 
-                    <!-- kategori_id (preselect by kode filter jika ada) -->
+                    <!-- kategori_id -->
                     <div class="col-md-6">
                         <label for="kategori_id" class="form-label">Kategori Penilaian</label>
 
@@ -211,7 +258,7 @@
                             </select>
 
                             <div class="form-text">
-                                Filter daftar di tabel pakai <code>?kategori=UTS/UAS</code> (berdasar <b>kode</b>), sementara yang disimpan adalah <b>kategori_id</b>.
+                                Filter daftar di tabel pakai <code>?kategori=UTS/UAS</code> (berdasar <b>kode</b>), yang disimpan adalah <b>kategori_id</b>.
                             </div>
 
                             <?php if ($hasErr('kategori_id')): ?>

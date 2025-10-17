@@ -44,6 +44,7 @@
         border-color: #93c5fd
     }
 
+    /* freeze tanpa menghilangkan nilai */
     .form-lock {
         position: relative
     }
@@ -55,9 +56,35 @@
         background: rgba(255, 255, 255, .35);
         pointer-events: auto
     }
+
+    /* overlay blocker tengah */
+    .form-blocker {
+        position: absolute;
+        inset: 0;
+        background: rgba(255, 255, 255, .6);
+        backdrop-filter: blur(1px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 5
+    }
+
+    .form-blocker.d-none {
+        display: none
+    }
+
+    .form-blocker-inner {
+        display: flex;
+        align-items: center;
+        padding: .5rem .75rem;
+        border-radius: .75rem;
+        background: rgba(255, 255, 255, .9);
+        box-shadow: 0 .4rem 1rem rgba(0, 0, 0, .08);
+        font-weight: 600
+    }
 </style>
 
-<div class="container-fluid px-4 page-section">
+<div class="container-fluid px-4 page-section fade-in-up delay-300">
     <!-- Header -->
     <div class="d-sm-flex align-items-center justify-content-between mb-3">
         <div>
@@ -86,7 +113,8 @@
         <div class="card-body">
             <form id="formTambahMatpel"
                 action="<?= site_url('operator/matpel/tambah') ?>"
-                method="post" autocomplete="off" novalidate>
+                method="post" autocomplete="off" novalidate
+                class="position-relative">
                 <?= csrf_field() ?>
                 <?php
                 $errors = session('errors') ?? [];
@@ -95,61 +123,49 @@
                 ?>
 
                 <div class="row g-3 mb-3">
-                    <!-- Kode (info saja, tidak dikirim ke server) -->
+                    <!-- Kode (info saja) -->
                     <div class="col-md-6">
                         <label for="kode_info" class="form-label">Kode MatPel (otomatis)</label>
-                        <input
-                            type="text"
-                            class="form-control"
-                            id="kode_info"
+                        <input type="text" class="form-control" id="kode_info"
                             value="<?= esc($kode_saran ?? '—') ?>"
-                            placeholder="Akan dibuat otomatis di server"
-                            disabled>
+                            placeholder="Akan dibuat otomatis di server" disabled>
                         <div class="form-text">Kode dibuat otomatis di server saat disimpan.</div>
                     </div>
 
                     <!-- Nama MatPel -->
                     <div class="col-md-6">
-                        <label for="nama_mapel" class="form-label">Nama MatPel</label>
-                        <input
-                            type="text"
+                        <label for="nama" class="form-label">Nama MatPel</label>
+                        <input type="text"
                             class="form-control<?= $hasErr('nama') ? ' is-invalid' : '' ?>"
                             id="nama" name="nama"
                             value="<?= esc(old('nama') ?? '') ?>"
                             placeholder="Masukkan nama mata pelajaran" required
                             aria-describedby="namaFeedback">
                         <?php if ($hasErr('nama')): ?>
-                            <div id="namaFeedback" class="invalid-feedback d-block">
-                                <?= esc($getErr('nama')) ?>
-                            </div>
+                            <div id="namaFeedback" class="invalid-feedback d-block"><?= esc($getErr('nama')) ?></div>
                         <?php endif; ?>
                     </div>
-
 
                     <!-- Status -->
                     <div class="col-md-6">
                         <label for="is_active" class="form-label">Status MatPel</label>
-                        <select
-                            class="form-select<?= $hasErr('is_active') ? ' is-invalid' : '' ?>"
+                        <select class="form-select<?= $hasErr('is_active') ? ' is-invalid' : '' ?>"
                             name="is_active" id="is_active" required aria-describedby="isActiveFeedback">
                             <option value="" disabled <?= (old('is_active', '') === '') ? 'selected' : '' ?>>— Pilih Status —</option>
                             <option value="1" <?= (old('is_active', '1') === '1') ? 'selected' : '' ?>>Aktif</option>
                             <option value="0" <?= (old('is_active', '') === '0') ? 'selected' : '' ?>>Tidak Aktif</option>
                         </select>
                         <?php if ($hasErr('is_active')): ?>
-                            <div id="isActiveFeedback" class="invalid-feedback d-block">
-                                <?= esc($getErr('is_active')) ?>
-                            </div>
+                            <div id="isActiveFeedback" class="invalid-feedback d-block"><?= esc($getErr('is_active')) ?></div>
                         <?php endif; ?>
                     </div>
                 </div>
 
                 <!-- Actions -->
                 <div class="d-flex gap-2 mt-4">
-                    <button type="submit" id="btnSubmit" class="btn btn-gradient rounded-pill">
-                        <span class="btn-text">
-                            <i class="fa-solid fa-floppy-disk me-2"></i> Simpan
-                        </span>
+                    <button type="submit" id="btnSubmit" class="btn btn-gradient rounded-pill d-inline-flex align-items-center">
+                        <span class="spinner-border spinner-border-sm me-2 d-none" role="status" aria-hidden="true"></span>
+                        <span class="btn-text"><i class="fa-solid fa-floppy-disk me-2"></i> Simpan</span>
                     </button>
 
                     <button type="reset" id="btnReset" class="btn btn-outline-secondary rounded-pill">
@@ -160,29 +176,70 @@
                         <i class="fa-solid fa-arrow-left me-2"></i> Kembali
                     </a>
                 </div>
+
+                <!-- Overlay blocker -->
+                <div id="formBlocker" class="form-blocker d-none" aria-hidden="true">
+                    <div class="form-blocker-inner">
+                        <div class="spinner-border" role="status" aria-hidden="true"></div>
+                        <div class="ms-2">Loading…</div>
+                    </div>
+                </div>
             </form>
         </div>
     </div>
 </div>
 
 <script>
-    (function() {
+    document.addEventListener('DOMContentLoaded', function() {
         const form = document.getElementById('formTambahMatpel');
-        const btnSubmit = document.getElementById('btnSubmit');
-        const btnText = btnSubmit?.querySelector('.btn-text');
+        const btn = document.getElementById('btnSubmit');
+        const spin = btn ? btn.querySelector('.spinner-border') : null;
+        const txt = btn ? btn.querySelector('.btn-text') : null;
+        const blk = document.getElementById('formBlocker');
+        if (!form || !btn) return;
 
-        form?.addEventListener('submit', function() {
-            if (btnText) {
-                btnText.innerHTML =
-                    '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Menyimpan...';
-            }
-            btnSubmit.disabled = true;
+        let loading = false;
+
+        function freezeInputs(container) {
+            const textLike = 'input[type="text"],input[type="email"],input[type="password"],input[type="number"],input[type="date"],input[type="time"],input[type="datetime-local"],input[type="search"],input[type="tel"],textarea';
+            container.querySelectorAll(textLike).forEach(el => {
+                el.setAttribute('readonly', 'readonly');
+                el.setAttribute('aria-readonly', 'true');
+            });
+            container.querySelectorAll('select,input[type="checkbox"],input[type="radio"]').forEach(el => {
+                el.setAttribute('aria-disabled', 'true');
+            });
+        }
+
+        function armLoading(e) {
+            if (loading) return;
+            loading = true;
+
+            spin && spin.classList.remove('d-none');
+            txt && (txt.innerHTML = '<i class="fa-solid fa-floppy-disk me-2"></i> Menyimpan…');
+
+            btn.setAttribute('disabled', 'disabled');
+            btn.classList.add('disabled');
+
+            blk && blk.classList.remove('d-none');
+            form.setAttribute('aria-busy', 'true');
             form.classList.add('form-lock');
-            // pastikan token CSRF aktif
+            freezeInputs(form);
+
+            // pastikan CSRF tetap aktif
             const csrf = form.querySelector('input[name="<?= csrf_token() ?>"]');
             if (csrf) csrf.disabled = false;
-        });
-    })();
+
+            // submit setelah repaint agar UI sempat berubah
+            e && e.preventDefault();
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => form.submit());
+            });
+        }
+
+        btn.addEventListener('click', armLoading);
+        form.addEventListener('submit', armLoading);
+    });
 </script>
 
 <?= $this->endSection() ?>

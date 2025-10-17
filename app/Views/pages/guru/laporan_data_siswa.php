@@ -32,7 +32,8 @@
                 <!-- Filter (Form GET) -->
                 <div class="col-12 col-md-12">
                     <form id="filterForm" method="get" class="row g-2 align-items-center">
-                        <div class="col-12 col-md-8">
+                        <!-- Search -->
+                        <div class="col-12 col-md-6">
                             <div class="input-group input-group-sm search-group">
                                 <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
                                 <input
@@ -47,21 +48,48 @@
                             </div>
                         </div>
 
-                        <!-- Dropdown Tahun Ajaran (dari tb_tahun_ajaran) -->
-                        <div class="col-6 col-md-4">
+                        <!-- Tahun Ajaran -->
+                        <div class="col-6 col-md-2">
                             <?php $tahunajaran = (string)($tahunajaran ?? ''); ?>
                             <select id="filterTA" name="tahunajaran" class="form-select form-select-sm" aria-label="Filter Tahun Ajaran">
-                                <option value="" <?= $tahunajaran === '' ? 'selected' : '' ?>>Semua Tahun Ajaran</option>
+                                <option value="" <?= $tahunajaran === '' ? 'selected' : '' ?>>Semua TA</option>
                                 <?php foreach (($listTA ?? []) as $ta): ?>
                                     <?php $tid = (string)($ta['id_tahun_ajaran'] ?? ''); ?>
                                     <option value="<?= esc($tid) ?>" <?= $tahunajaran === $tid ? 'selected' : '' ?>>
-                                        <?= esc($ta['label'] ?? '') ?>
+                                        <?= esc($ta['label'] ?? (($ta['tahun'] ?? '') . ' - Sem ' . ucfirst($ta['semester'] ?? ''))) ?>
                                     </option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
-                    </form>
 
+                        <!-- Kelas (NEW) -->
+                        <div class="col-6 col-md-2">
+                            <?php $kSel = (string)($kelas ?? ''); ?>
+                            <select id="filterKelas" name="kelas" class="form-select form-select-sm" aria-label="Filter Kelas">
+                                <option value="" <?= $kSel === '' ? 'selected' : '' ?>>Semua Kelas</option>
+                                <?php if (!empty($listKelas)): ?>
+                                    <?php foreach ($listKelas as $k): ?>
+                                        <?php $kid = (string)($k['id_kelas'] ?? ''); ?>
+                                        <option value="<?= esc($kid) ?>" <?= $kSel === $kid ? 'selected' : '' ?>>
+                                            <?= esc($k['nama_kelas'] ?? ('Kelas #' . $kid)) ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                <?php else: ?>
+                                    <option value="" disabled>(Kelas belum tersedia)</option>
+                                <?php endif; ?>
+                            </select>
+                        </div>
+
+                        <!-- Gender -->
+                        <div class="col-6 col-md-2">
+                            <?php $g = (string)($gender ?? ''); ?>
+                            <select id="filterGender" name="gender" class="form-select form-select-sm" aria-label="Filter Gender">
+                                <option value="" <?= $g === ''  ? 'selected' : '' ?>>Semua</option>
+                                <option value="L" <?= $g === 'L' ? 'selected' : '' ?>>Laki-laki</option>
+                                <option value="P" <?= $g === 'P' ? 'selected' : '' ?>>Perempuan</option>
+                            </select>
+                        </div>
+                    </form>
                 </div>
             </div>
 
@@ -103,29 +131,49 @@
                                 // === Normalisasi Jenis Kelamin ===
                                 $gndrRaw = (string)($d_s['gender'] ?? '');
                                 $gndrLow = mb_strtolower(trim($gndrRaw), 'UTF-8');
-
                                 $isL = preg_match('/^(l|laki|lk|male|m)/i', $gndrRaw) || str_contains($gndrLow, 'laki');
                                 $isP = preg_match('/^(p|perem|pr|wanita|female|f)/i', $gndrRaw) || str_contains($gndrLow, 'perem');
 
                                 if ($isL) {
-                                    $genderShort = 'L';
                                     $genderFull  = 'Laki-laki';
                                     $badgeGender = 'badge rounded-pill bg-primary';
                                 } elseif ($isP) {
-                                    $genderShort = 'P';
                                     $genderFull  = 'Perempuan';
                                     $badgeGender = 'badge rounded-pill bg-danger';
                                 } else {
-                                    $genderShort = '—';
                                     $genderFull  = ($gndrRaw !== '' ? $gndrRaw : 'Tidak diketahui');
                                     $badgeGender = 'badge rounded-pill bg-secondary';
                                 }
 
-                                // === Status Enrol ===
-                                $stRaw = mb_strtolower((string)($d_s['status'] ?? ''), 'UTF-8');
-                                $isEnrolActive = in_array($stRaw, ['1', 'aktif', 'active', 'ya', 'true'], true);
-                                $statusText  = $isEnrolActive ? 'Aktif' : 'Nonaktif';
-                                $badgeStatus = $isEnrolActive ? 'badge bg-success' : 'badge bg-secondary';
+                                // === Status Enrol → standarisasi ke: Aktif | Lulus | Keluar ===
+                                $stRaw         = mb_strtolower((string)($d_s['status'] ?? ''), 'UTF-8');
+                                $hasExitDate   = !empty($d_s['tanggal_keluar']);
+                                $mapAktif      = ['1', 'aktif', 'active', 'ya', 'true', 'ongoing', 'enrolled'];
+                                $mapLulus      = ['2', 'lulus', 'graduated', 'graduate', 'wisuda', 'kelulusan'];
+                                $mapKeluar     = ['3', 'keluar', 'drop out', 'do', 'pindah', 'nonaktif', 'non-active', 'false', 'tidak', 'resign', 'cutoff'];
+
+                                if (in_array($stRaw, $mapAktif, true)) {
+                                    $statusModel = 'aktif';
+                                } elseif (in_array($stRaw, $mapLusus ?? $mapLulus, true)) { // guard typo jika pernah ada
+                                    $statusModel = 'lulus';
+                                } elseif (in_array($stRaw, $mapKeluar, true)) {
+                                    $statusModel = 'keluar';
+                                } elseif ($hasExitDate) {
+                                    $statusModel = 'keluar';
+                                } else {
+                                    $statusModel = 'aktif'; // fallback aman
+                                }
+
+                                if ($statusModel === 'aktif') {
+                                    $statusText  = 'Aktif';
+                                    $badgeStatus = 'badge bg-success';
+                                } elseif ($statusModel === 'lulus') {
+                                    $statusText  = 'Lulus';
+                                    $badgeStatus = 'badge bg-info';
+                                } else { // keluar
+                                    $statusText  = 'Keluar';
+                                    $badgeStatus = 'badge bg-secondary';
+                                }
 
                                 // === Tanggal ===
                                 $tMasukFmt  = $fmtDMY($d_s['tanggal_masuk']  ?? null);
@@ -172,17 +220,20 @@
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         const form = document.getElementById('filterForm');
-        const inpQ = document.getElementById('searchSiswa');
-        const selTA = document.getElementById('filterTA');
+        const search = document.getElementById('searchSiswa');
+        const ta = document.getElementById('filterTA');
+        const kelas = document.getElementById('filterKelas');
+        const gender = document.getElementById('filterGender');
 
-        let timer = null;
-        inpQ.addEventListener('input', function() {
-            clearTimeout(timer);
-            timer = setTimeout(() => form.submit(), 350);
-        });
-        selTA?.addEventListener('change', function() {
-            form.submit();
-        });
+        // Auto-submit saat select berubah
+        [ta, kelas, gender].forEach(el => el && el.addEventListener('change', () => form.submit()));
+
+        // Enter di kolom pencarian
+        if (search) {
+            search.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') form.submit();
+            });
+        }
     });
 </script>
 

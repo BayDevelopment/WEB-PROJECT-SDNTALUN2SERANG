@@ -77,11 +77,38 @@
             .form-floating .form-control {
                 padding-right: 2.25rem
             }
+
+            /* Tinggi header/navbar kalau ada (silakan sesuaikan) */
+            :root {
+                --header-height: 60px;
+            }
+
+            /* Card “ngambang” saat discroll */
+            .sticky-top-smart {
+                position: sticky;
+                top: calc(var(--header-height) + 20px);
+                /* jaga jarak dari navbar */
+                z-index: 1020;
+                /* di atas konten lain */
+                background: #fff;
+                /* pastikan solid */
+                transition: box-shadow .2s ease, transform .2s ease, backdrop-filter .2s ease;
+                /* Opsional: efek halus saat menempel */
+                transform: translateZ(0);
+            }
+
+            /* Tambah bayangan tipis saat card mencapai posisi top (opsional, tanpa JS pun oke) */
+            .sticky-top-smart {
+                box-shadow: 0 .5rem 1rem rgba(0, 0, 0, .05);
+            }
+
+            /* Jika halaman punya header sticky/ fixed lebih tinggi, tinggal ganti variabelnya:
+:root { --header-height: 64px; } */
         </style>
 
         <!-- LEFT -->
         <div class="col-12 col-lg-4">
-            <div class="card border-0 shadow-sm rounded-4 overflow-hidden profile-modern">
+            <div class="card border-0 shadow-sm rounded-4 overflow-hidden profile-modern sticky-top-smart">
                 <div class="card-body text-center pt-0 mt-3">
                     <h5 class="mb-1 fw-semibold"><?= esc($user['username'] ?? 'Operator') ?></h5>
 
@@ -153,83 +180,100 @@
                         <!-- Data Akun (aktif & show) -->
                         <div class="tab-pane fade show active" id="pane-account" role="tabpanel" aria-labelledby="tab-account" tabindex="0">
                             <form action="<?= base_url('operator/profile') ?>" method="post" class="row g-3 row-cols-1 row-cols-md-2">
-                                <?php $v = $validation ?? \Config\Services::validation(); ?>
+                                <?php $errors = session('errors') ?? []; ?>
                                 <?= csrf_field() ?>
 
                                 <!-- Username -->
-                                <div class="col">
+                                <div class="col-12 col-md-6">
                                     <label class="form-label">Username</label>
                                     <div class="input-group">
                                         <span class="input-group-text"><i class="fa-regular fa-user"></i></span>
-                                        <input id="username" type="text" name="username"
-                                            value="<?= old('username', $user['username'] ?? '') ?>"
-                                            class="form-control <?= $v->hasError('username') ? 'is-invalid' : '' ?>"
+                                        <input
+                                            id="username"
+                                            type="text"
+                                            name="username"
+                                            value="<?= esc(old('username', $user['username'] ?? '')) ?>"
+                                            class="form-control <?= isset($errors['username']) ? 'is-invalid' : '' ?>"
                                             placeholder="Nama pengguna">
                                     </div>
-                                    <?php if ($v->hasError('username')): ?>
-                                        <div class="invalid-feedback d-block"><?= $v->getError('username') ?></div>
+                                    <?php if (isset($errors['username'])): ?>
+                                        <div class="invalid-feedback d-block"><?= esc($errors['username']) ?></div>
                                     <?php endif; ?>
                                     <div class="form-text">Gunakan 4–24 karakter (huruf, angka, titik/underscore).</div>
                                 </div>
 
                                 <!-- Email -->
-                                <div class="col">
+                                <div class="col-12 col-md-6">
                                     <label class="form-label">Email</label>
                                     <div class="input-group">
                                         <span class="input-group-text"><i class="fa-regular fa-envelope"></i></span>
-                                        <input id="email" type="email" name="email" inputmode="email"
-                                            value="<?= old('email', $user['email'] ?? '') ?>"
-                                            class="form-control <?= $v->hasError('email') ? 'is-invalid' : '' ?>"
+                                        <input
+                                            id="email"
+                                            type="email"
+                                            name="email"
+                                            inputmode="email"
+                                            value="<?= esc(old('email', $user['email'] ?? '')) ?>"
+                                            class="form-control <?= isset($errors['email']) ? 'is-invalid' : '' ?>"
                                             placeholder="nama@email.com">
                                     </div>
-                                    <?php if ($v->hasError('email')): ?>
-                                        <div class="invalid-feedback d-block"><?= $v->getError('email') ?></div>
+                                    <?php if (isset($errors['email'])): ?>
+                                        <div class="invalid-feedback d-block"><?= esc($errors['email']) ?></div>
                                     <?php endif; ?>
                                 </div>
 
                                 <!-- Role -->
-                                <div class="col">
+                                <div class="col-12 col-md-6">
                                     <label for="role" class="form-label">Role</label>
                                     <div class="input-group">
                                         <span class="input-group-text"><i class="fa-solid fa-user-shield"></i></span>
                                         <?php $roleVal = old('role', $user['role'] ?? 'operator'); ?>
-                                        <select name="role" id="role"
-                                            class="form-select <?= isset($v) && $v->hasError('role') ? 'is-invalid' : '' ?>">
-                                            <option value="operator" <?= $roleVal === 'operator' ? 'selected' : ''; ?>>Operator</option>
-                                            <option value="guru" <?= $roleVal === 'guru' ? 'selected' : ''; ?>>Guru</option>
-                                            <option value="siswa" <?= $roleVal === 'siswa' ? 'selected' : ''; ?>>Siswa</option>
+                                        <select
+                                            name="role"
+                                            id="role"
+                                            class="form-select <?= isset($errors['role']) ? 'is-invalid' : '' ?>">
+                                            <option value="operator" <?= $roleVal === 'operator' ? 'selected' : '' ?>>Operator</option>
+                                            <option value="guru" <?= $roleVal === 'guru'     ? 'selected' : '' ?>>Guru</option>
+                                            <option value="siswa" <?= $roleVal === 'siswa'    ? 'selected' : '' ?>>Siswa</option>
                                         </select>
                                     </div>
-                                    <?php if (isset($v) && $v->hasError('role')): ?>
-                                        <div class="invalid-feedback d-block"><?= esc($v->getError('role')) ?></div>
+                                    <?php if (isset($errors['role'])): ?>
+                                        <div class="invalid-feedback d-block"><?= esc($errors['role']) ?></div>
                                     <?php endif; ?>
                                 </div>
 
                                 <!-- Status -->
-                                <div class="col">
+                                <div class="col-12 col-md-6">
                                     <label for="is_active" class="form-label">Status</label>
                                     <div class="input-group">
                                         <span class="input-group-text"><i class="fa-regular fa-circle-check"></i></span>
-                                        <?php $activeVal = (int) old('is_active', (int)($user['is_active'] ?? 0)); ?>
-                                        <select name="is_active" id="is_active"
-                                            class="form-select <?= isset($v) && $v->hasError('is_active') ? 'is-invalid' : '' ?>">
-                                            <option value="1" <?= $activeVal === 1 ? 'selected' : ''; ?>>Aktif</option>
-                                            <option value="0" <?= $activeVal === 0 ? 'selected' : ''; ?>>Nonaktif</option>
+                                        <?php $activeVal = (int) old('is_active', (int) ($user['is_active'] ?? 0)); ?>
+                                        <select
+                                            name="is_active"
+                                            id="is_active"
+                                            class="form-select <?= isset($errors['is_active']) ? 'is-invalid' : '' ?>">
+                                            <option value="1" <?= $activeVal === 1 ? 'selected' : '' ?>>Aktif</option>
+                                            <option value="0" <?= $activeVal === 0 ? 'selected' : '' ?>>Nonaktif</option>
                                         </select>
                                     </div>
-                                    <?php if (isset($v) && $v->hasError('is_active')): ?>
-                                        <div class="invalid-feedback d-block"><?= esc($v->getError('is_active')) ?></div>
+                                    <?php if (isset($errors['is_active'])): ?>
+                                        <div class="invalid-feedback d-block"><?= esc($errors['is_active']) ?></div>
                                     <?php endif; ?>
                                 </div>
 
-                                <!-- Actions (full width) -->
-                                <div class="col-12 d-flex justify-content-end gap-2 mt-3">
-                                    <button type="reset" class="btn btn-outline-secondary rounded-pill py-2">Reset</button>
-                                    <button type="submit" class="btn btn-brand ring-focus rounded-pill py-2">
-                                        <i class="fa-regular fa-floppy-disk me-1"></i> Simpan Perubahan
-                                    </button>
+                                <!-- Actions -->
+                                <div class="col-12 col-md-12 mt-4 pt-3 border-top">
+                                    <div class="d-grid gap-2">
+                                        <button type="reset" class="btn btn-outline-secondary rounded-pill py-2">
+                                            Reset
+                                        </button>
+                                        <button id="btnSubmitSecurity" type="submit"
+                                            class="btn btn-brand ring-focus rounded-pill py-2">
+                                            Simpan Perubahan
+                                        </button>
+                                    </div>
                                 </div>
                             </form>
+
                         </div>
 
                         <!-- Keamanan -->
@@ -239,7 +283,7 @@
                                 <?= csrf_field() ?>
 
                                 <!-- Current -->
-                                <div class="">
+                                <div class="col-12 col-md-12">
                                     <label class="form-label">Password Saat Ini</label>
                                     <div class="form-floating mb-3 position-relative">
                                         <input class="form-control" id="current_password" name="password" type="password"
@@ -257,7 +301,7 @@
                                 </div>
 
                                 <!-- New -->
-                                <div class="">
+                                <div class="col-12 col-md-12">
                                     <label class="form-label">Password Baru</label>
                                     <div class="form-floating mb-3 position-relative">
                                         <input class="form-control" id="new_password" name="new_password" type="password"
@@ -279,7 +323,7 @@
                                 </div>
 
                                 <!-- Confirm -->
-                                <div class="">
+                                <div class="col-12 col-md-12">
                                     <label class="form-label">Konfirmasi Password Baru</label>
                                     <div class="form-floating mb-3 position-relative">
                                         <input class="form-control" id="new_password_confirm" name="new_password_confirm" type="password"
@@ -296,16 +340,15 @@
                                     <?php endif; ?>
                                 </div>
 
-                                <!-- Actions (paling bawah form) -->
-                                <div class="mt-3 pt-2 border-top">
-                                    <div class="d-grid d-md-flex justify-content-md-end gap-2">
-                                        <!-- opsional: tombol reset -->
+                                <!-- Actions: letakkan SETELAH semua field -->
+                                <div class="col-12 col-md-12 mt-4 pt-3 border-top">
+                                    <div class="d-grid gap-2">
                                         <button type="reset" class="btn btn-outline-secondary rounded-pill py-2">
                                             Reset
                                         </button>
-
-                                        <button id="btnSubmitSecurity" type="submit" class="btn btn-brand ring-focus rounded-pill py-2 px-4">
-                                            <i class="fa-solid fa-shield-halved me-1"></i> Update Password
+                                        <button id="btnSubmitSecurity" type="submit"
+                                            class="btn btn-brand ring-focus rounded-pill py-2">
+                                            Simpan Perubahan
                                         </button>
                                     </div>
                                 </div>

@@ -168,7 +168,7 @@
                     </div>
 
                     <div class="col-md-6">
-                        <label for="password" class="form-label">Password (opsional)</label>
+                        <label for="password" class="form-label">Password</label>
                         <div class="position-relative">
                             <input
                                 type="password"

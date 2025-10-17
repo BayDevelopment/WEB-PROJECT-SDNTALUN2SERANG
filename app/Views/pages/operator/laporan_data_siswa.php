@@ -7,7 +7,7 @@
         white-space: nowrap;
     }
 </style>
-<div class="container-fluid px-4 page-section">
+<div class="container-fluid px-4 page-section fade-in-up delay-300">
     <div class="d-sm-flex align-items-center justify-content-between mb-3">
         <div>
             <h1 class="mt-4 page-title"><?= esc($sub_judul) ?></h1>
@@ -30,7 +30,8 @@
                 <!-- Filter (Form GET) -->
                 <div class="col-12 col-md-9">
                     <form id="filterForm" method="get" class="row g-2 align-items-center">
-                        <div class="col-12 col-md-4">
+                        <!-- Search -->
+                        <div class="col-12 col-md-3">
                             <div class="input-group input-group-sm search-group">
                                 <span class="input-group-text">
                                     <i class="fa-solid fa-magnifying-glass"></i>
@@ -47,7 +48,8 @@
                             </div>
                         </div>
 
-                        <div class="col-12 col-md-4">
+                        <!-- Gender -->
+                        <div class="col-12 col-md-3">
                             <select id="filterGender" name="gender" class="form-select form-select-sm" aria-label="Filter gender">
                                 <?php $g = $gender ?? ''; ?>
                                 <option value="" <?= $g === '' ? 'selected' : '' ?>>Semua Gender</option>
@@ -55,7 +57,9 @@
                                 <option value="P" <?= $g === 'P' ? 'selected' : '' ?>>Perempuan</option>
                             </select>
                         </div>
-                        <div class="col-12 col-md-4">
+
+                        <!-- Tahun Ajaran -->
+                        <div class="col-12 col-md-3">
                             <select id="filterTA" name="tahunajaran" class="form-select form-select-sm" aria-label="Filter Tahun Ajaran">
                                 <option value="">Semua Tahun Ajaran</option>
                                 <?php foreach ($listTA as $ta): ?>
@@ -67,7 +71,45 @@
                                 <?php endforeach ?>
                             </select>
                         </div>
+
+                        <!-- Kelas (NEW) -->
+                        <div class="col-12 col-md-3">
+                            <select id="filterKelas" name="kelas" class="form-select form-select-sm" aria-label="Filter Kelas">
+                                <?php $kSel = $kelas ?? ''; ?>
+                                <option value="" <?= $kSel === '' ? 'selected' : '' ?>>Semua Kelas</option>
+                                <?php if (!empty($listKelas)): ?>
+                                    <?php foreach ($listKelas as $k): ?>
+                                        <option value="<?= esc($k['id_kelas']) ?>" <?= $kSel == $k['id_kelas'] ? 'selected' : '' ?>>
+                                            <?= esc($k['nama_kelas'] ?? ('Kelas #' . $k['id_kelas'])) ?>
+                                        </option>
+                                    <?php endforeach ?>
+                                <?php else: ?>
+                                    <option value="" disabled>(Kelas belum tersedia)</option>
+                                <?php endif; ?>
+                            </select>
+                        </div>
                     </form>
+
+                    <script>
+                        document.addEventListener('DOMContentLoaded', function() {
+                            const form = document.getElementById('filterForm');
+                            const selects = ['filterGender', 'filterTA', 'filterKelas']
+                                .map(id => document.getElementById(id))
+                                .filter(Boolean);
+
+                            // Auto submit ketika select berubah
+                            selects.forEach(el => el.addEventListener('change', () => form.submit()));
+
+                            // Optional: submit saat tekan Enter di kolom pencarian
+                            const search = document.getElementById('searchSiswa');
+                            if (search) {
+                                search.addEventListener('keydown', function(e) {
+                                    if (e.key === 'Enter') form.submit();
+                                });
+                            }
+                        });
+                    </script>
+
                 </div>
             </div>
             <!-- Tabel -->
@@ -92,27 +134,21 @@
                             $no = 1;
 
                             $fmtDMY = function ($val): string {
-                                $t = _indo_parse_time($val, 'Asia/Jakarta'); // helper yang sudah kamu buat
+                                $t = _indo_parse_time($val, 'Asia/Jakarta'); // helper kamu
                                 return $t ? $t->format('d/m/Y') : '—';
                             };
 
                             foreach ($d_siswa as $d_s):
-                                $id = (int)($d_s['id_siswa_tahun'] ?? '');
+                                $id   = (int)($d_s['id_siswa_tahun'] ?? '');
                                 $nisn = (string)($d_s['nisn'] ?? '');
-                                // konsisten: pakai 'nama_lengkap' (atau ganti semua ke 'full_name' kalau itu yang di DB)
                                 $nama = (string)($d_s['nama_lengkap'] ?? $d_s['full_name'] ?? '');
 
-                                // Gender → tag + badge
+                                // ====== Gender → tag + badge ======
                                 $gndrRaw = (string)($d_s['gender'] ?? '');
                                 $gndr    = mb_strtolower($gndrRaw, 'UTF-8');
-                                $tag     = (str_contains($gndr, 'laki') || $gndr === 'L') ? 'Laki-laki'
-                                    : ((str_contains($gndr, 'perem') || $gndr === 'p') ? 'Perempuan'
-                                        : ($gndrRaw !== '' ? $gndrRaw : '—'));
-                                // Pastikan class ini ada di CSS kamu; kalau tidak, pakai badge bootstrap standar
-                                // Jenis kelamin (enum L/P)
+
                                 $jkRaw = (string)($d_s['gender'] ?? $d_s['jk'] ?? $d_s['jenis_kelamin'] ?? '');
                                 $jk    = strtoupper(trim($jkRaw));
-                                // Ambil huruf pertama kalau ada string panjang (mis. "Laki-laki")
                                 if ($jk !== '' && strlen($jk) > 1) {
                                     $jk = substr($jk, 0, 1);
                                 }
@@ -122,21 +158,52 @@
                                     $badgeGender = 'badge bg-primary';
                                 } elseif ($jk === 'P') {
                                     $jkLabel = 'Perempuan';
-                                    // pakai danger (default Bootstrap). Kalau mau pink, lihat CSS opsional di bawah.
                                     $badgeGender = 'badge bg-danger';
                                 } else {
                                     $jkLabel = ($jkRaw !== '' ? $jkRaw : '—');
                                     $badgeGender = 'badge bg-secondary';
                                 }
 
-
-                                // Status enrol (dari tabel tahunan: $d_s['status'])
+                                // ====== Status (PATEN: hanya 'aktif' | 'lulus' | 'keluar') ======
+                                // Terima input bervariasi → distandarkan ke 3 nilai model
                                 $stRaw = mb_strtolower((string)($d_s['status'] ?? ''), 'UTF-8');
-                                $isEnrolActive = in_array($stRaw, ['1', 'aktif', 'active', 'ya', 'true'], true);
-                                $statusText  = $isEnrolActive ? 'Aktif' : 'Nonaktif';
-                                $badgeStatus = $isEnrolActive ? 'badge bg-success' : 'badge bg-secondary';
+                                $stRaw = trim($stRaw);
 
-                                // Tanggal masuk / keluar → FORMAT LANGSUNG dari RAW
+                                // Jika ada tanggal_keluar, default ke "keluar" (fallback aman)
+                                $hasExitDate = !empty($d_s['tanggal_keluar']);
+
+                                // Kamus mapping longgar -> baku
+                                $mapAktif = ['1', 'aktif', 'active', 'ya', 'true', 'ongoing', 'enrolled'];
+                                $mapLulus = ['2', 'lulus', 'graduated', 'graduate', 'wisuda', 'kelulusan'];
+                                $mapKeluar = ['3', 'keluar', 'drop out', 'do', 'pindah', 'nonaktif', 'non-active', 'false', 'tidak', 'resign', 'cutoff'];
+
+                                if (in_array($stRaw, $mapAktif, true)) {
+                                    $statusModel = 'aktif';
+                                } elseif (in_array($stRaw, $mapLulus, true)) {
+                                    $statusModel = 'lulus';
+                                } elseif (in_array($stRaw, $mapKeluar, true)) {
+                                    $statusModel = 'keluar';
+                                } elseif ($hasExitDate) {
+                                    // fallback logis jika ada tanggal keluar tapi status tak jelas
+                                    $statusModel = 'keluar';
+                                } else {
+                                    // fallback netral → anggap aktif (atau ganti ke 'keluar' jika kebijakanmu berbeda)
+                                    $statusModel = 'aktif';
+                                }
+
+                                // Label & badge final
+                                if ($statusModel === 'aktif') {
+                                    $statusText  = 'Aktif';
+                                    $badgeStatus = 'badge bg-success';
+                                } elseif ($statusModel === 'lulus') {
+                                    $statusText  = 'Lulus';
+                                    $badgeStatus = 'badge bg-info';
+                                } else { // 'keluar'
+                                    $statusText  = 'Keluar';
+                                    $badgeStatus = 'badge bg-secondary';
+                                }
+
+                                // ====== Tanggal masuk / keluar ======
                                 $tMasukFmt  = $fmtDMY($d_s['tanggal_masuk']  ?? null);
                                 $tKeluarFmt = $fmtDMY($d_s['tanggal_keluar'] ?? null);
                             ?>
@@ -160,7 +227,6 @@
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>
-
                     </table>
 
                 </div>

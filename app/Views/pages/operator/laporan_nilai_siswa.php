@@ -175,16 +175,35 @@
         border-color: #e5e7eb;
     }
 </style>
-<div class="container-fluid px-4 page-section">
-    <div class="d-sm-flex align-items-center justify-content-between mb-3">
-        <div>
-            <h1 class="mt-4 page-title"><?= esc($sub_judul) ?></h1>
-            <ol class="breadcrumb breadcrumb-modern mb-0">
-                <li class="breadcrumb-item"><a href="<?= base_url('/') ?>">Dashboard</a></li>
-                <li class="breadcrumb-item active"><?= esc($sub_judul) ?></li>
-            </ol>
+<div class="container-fluid px-4 page-section fade-in-up delay-300">
+    <div class="d-sm-flex align-items-center justify-content-between gap-2 gap-sm-3 mb-3 flex-wrap">
+        <div class="flex-grow-1">
+            <h1 class="mt-2 mt-sm-4 page-title mb-1"><?= esc($sub_judul ?? 'Laporan') ?></h1>
+
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb breadcrumb-modern mb-0">
+                    <li class="breadcrumb-item">
+                        <a href="<?= base_url('/') ?>">Dashboard</a>
+                    </li>
+                    <li class="breadcrumb-item active" aria-current="page">
+                        <?= esc($sub_judul ?? 'Laporan') ?>
+                    </li>
+                </ol>
+            </nav>
         </div>
+
+        <!-- Aksi kanan -->
+        <?php if (!empty($d_nilai)): ?>
+            <div class="ms-sm-3 w-100 w-sm-auto text-start text-sm-end">
+                <a href="<?= base_url('operator/laporan/tambah-nilai') ?>"
+                    class="btn btn-gradient rounded-pill btn-sm py-2 px-3 w-100 w-sm-auto">
+                    <i class="fa-solid fa-file-circle-plus me-2" aria-hidden="true"></i>
+                    <span>Tambah</span>
+                </a>
+            </div>
+        <?php endif; ?>
     </div>
+
 
     <div class="card card-elevated mb-3">
         <div class="card-body">
@@ -194,7 +213,7 @@
                 <div class="col-12 col-md-9">
                     <form id="filterForm" method="get" role="search" class="row g-2 align-items-center">
                         <!-- Cari nama / NISN -->
-                        <div class="col-12 col-md-4">
+                        <div class="col-12 col-md-2">
                             <div class="input-group input-group-sm">
                                 <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
                                 <input id="searchSiswa" type="text" name="q" value="<?= esc($q ?? '') ?>"
@@ -203,21 +222,37 @@
                         </div>
 
                         <!-- Tahun Ajaran -->
-                        <div class="col-6 col-md-3">
+                        <div class="col-12 col-md-3">
                             <select id="filterTA" name="tahunajaran" class="form-select form-select-sm">
                                 <option value="">Semua Tahun Ajaran</option>
                                 <?php foreach (($listTA ?? []) as $ta): ?>
                                     <option value="<?= esc($ta['id_tahun_ajaran']) ?>"
                                         <?= (string)($tahunajaran ?? '') === (string)$ta['id_tahun_ajaran'] ? 'selected' : '' ?>>
-                                        <?= esc($ta['tahun']) ?> - Semester <?= esc(ucfirst($ta['semester'])) ?>
-                                        <?= !empty($ta['is_active']) ? ' (Aktif)' : '' ?>
+                                        <?= esc($ta['tahun']) ?> - Semester <?= esc(ucfirst($ta['semester'])) ?><?= !empty($ta['is_active']) ? ' (Aktif)' : '' ?>
                                     </option>
                                 <?php endforeach ?>
                             </select>
                         </div>
 
-                        <!-- Kategori nilai (UTS/UAS) dari DB -->
-                        <div class="col-6 col-md-2">
+                        <!-- NEW: Kelas -->
+                        <div class="col-12 col-md-3">
+                            <select id="filterKelas" name="kelas" class="form-select form-select-sm">
+                                <option value="">Semua Kelas</option>
+                                <?php foreach (($listKelas ?? []) as $kls):
+                                    $idk  = (int)($kls['id_kelas'] ?? 0);
+                                    $nm   = (string)($kls['nama_kelas'] ?? '');
+                                    $tgkt = (string)($kls['tingkat'] ?? '');
+                                    $label = trim($nm !== '' ? $nm : ('Tingkat ' . $tgkt));
+                                ?>
+                                    <option value="<?= esc($idk) ?>" <?= (string)($kelas ?? '') === (string)$idk ? 'selected' : '' ?>>
+                                        <?= esc($label) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+
+                        <!-- Kategori nilai (UTS/UAS) -->
+                        <div class="col-12 col-md-2">
                             <?php $kat = strtoupper((string)($kategori ?? '')); ?>
                             <select id="filterKat" name="kategori" class="form-select form-select-sm">
                                 <option value="" <?= $kat === '' ? 'selected' : '' ?>>Semua</option>
@@ -233,7 +268,7 @@
                         </div>
 
                         <!-- Mapel -->
-                        <div class="col-6 col-md-3">
+                        <div class="col-12 col-md-2">
                             <select id="filterMapel" name="mapel" class="form-select form-select-sm">
                                 <option value="">Semua Mapel</option>
                                 <?php foreach (($listMapel ?? []) as $m): ?>
@@ -247,24 +282,13 @@
                     </form>
 
                     <script>
-                        // Auto-submit saat dropdown berubah (opsional)
-                        ['filterTA', 'filterKat', 'filterMapel'].forEach(id => {
+                        // Auto-submit saat dropdown berubah
+                        ['filterTA', 'filterKelas', 'filterKat', 'filterMapel'].forEach(id => {
                             const el = document.getElementById(id);
-                            if (el) {
-                                el.addEventListener('change', () => document.getElementById('filterForm').submit());
-                            }
+                            if (el) el.addEventListener('change', () => document.getElementById('filterForm').submit());
                         });
                     </script>
 
-                </div>
-
-                <!-- Aksi kanan -->
-                <div class="col-12 col-md-3 text-md-end">
-                    <?php if (!empty($d_nilai)): ?>
-                        <a href="<?= base_url('operator/laporan/tambah-nilai') ?>" class="btn btn-gradient rounded-pill btn-sm py-2 w-100 w-md-auto">
-                            <i class="fa-solid fa-file-circle-plus me-2" aria-hidden="true"></i> Tambah
-                        </a>
-                    <?php endif; ?>
                 </div>
             </div>
 
@@ -280,8 +304,9 @@
                                 <th>Nama Lengkap</th>
                                 <th>Gender</th>
                                 <th>Tahun Ajaran</th>
-                                <th>Semester</th>
+                                <th>Kelas</th>
                                 <th>Mapel</th>
+                                <th>Semester</th>
                                 <th>Kategori</th>
                                 <th>Skor</th>
                                 <th>Tanggal</th>
@@ -294,20 +319,26 @@
                             <?php
                             $no = 1;
                             foreach ($d_nilai as $row):
-                                $nisn      = (string)($row['nisn'] ?? $row['siswa_nisn'] ?? '');
-                                $nama      = (string)($row['full_name'] ?? $row['siswa_nama'] ?? $row['nama_lengkap'] ?? '');
-                                $genderRaw = (string)($row['gender'] ?? $row['siswa_gender'] ?? '');
-                                $gender    = $genderRaw !== '' ? strtoupper($genderRaw[0]) : ''; // L/P/''
+                                $nisn       = (string)($row['nisn'] ?? $row['siswa_nisn'] ?? '');
+                                $nama       = (string)($row['full_name'] ?? $row['siswa_nama'] ?? $row['nama_lengkap'] ?? '');
+                                $genderRaw  = (string)($row['gender'] ?? $row['siswa_gender'] ?? '');
+                                $gender     = $genderRaw !== '' ? strtoupper($genderRaw[0]) : ''; // L/P/''
 
-                                $taTahun   = (string)($row['tahun_ajaran'] ?? $row['ta_tahun'] ?? '');
-                                $taSmtr    = (string)($row['semester'] ?? $row['ta_semester'] ?? '');
-                                $mapelNama = (string)($row['nama'] ?? $row['mapel_nama'] ?? '');
-                                $katKode   = (string)($row['kategori_kode'] ?? '');
-                                $skor      = (string)($row['skor'] ?? '');
-                                $ket       = (string)($row['keterangan'] ?? $row['keterangan_nilai'] ?? '');
+                                $taTahun    = (string)($row['tahun_ajaran'] ?? $row['ta_tahun'] ?? '');
+                                $taSmtr     = (string)($row['semester'] ?? $row['ta_semester'] ?? '');
 
-                                $tglRaw    = $row['tanggal_nilai'] ?? $row['tanggal'] ?? null;
-                                $tglTampil = '—';
+                                // === KELAS (dari tb_siswa.kelas_id -> join tb_kelas) ===
+                                $kelasNama     = (string)($row['kelas_nama'] ?? '');
+                                $kelasTingkat  = isset($row['kelas_tingkat']) ? (string)$row['kelas_tingkat'] : '';
+                                $kelasTampil   = $kelasNama !== '' ? $kelasNama : ($kelasTingkat !== '' ? 'Tingkat ' . $kelasTingkat : '—');
+
+                                $mapelNama  = (string)($row['nama'] ?? $row['mapel_nama'] ?? '');
+                                $katKode    = (string)($row['kategori_kode'] ?? '');
+                                $skor       = (string)($row['skor'] ?? '');
+                                $ket        = (string)($row['keterangan'] ?? $row['keterangan_nilai'] ?? '');
+
+                                $tglRaw     = $row['tanggal_nilai'] ?? $row['tanggal'] ?? null;
+                                $tglTampil  = '—';
                                 if (!empty($tglRaw) && $tglRaw !== '0000-00-00' && $tglRaw !== '0000-00-00 00:00:00') {
                                     $ts = strtotime($tglRaw);
                                     if ($ts !== false) $tglTampil = date('d/m/Y', $ts);
@@ -323,18 +354,18 @@
                                 $hrefEdit = base_url('operator/laporan/edit-nilai/' . $idNilai) . ($qs ? ('?' . $qs) : '');
                             ?>
                                 <tr>
-                                    <!-- No: ganjil btn-outline-secondary, genap btn-outline-primary -->
+                                    <!-- No -->
                                     <td class="w-40px text-center">
                                         <span class="<?= ($no % 2 ? 'btn btn-sm btn-outline-secondary' : 'btn btn-sm btn-outline-primary') ?> rounded-pill px-2 py-0">
                                             <?= $no ?>
                                         </span>
                                     </td>
 
-                                    <td><span class="font-monospace"><?= esc($nisn) ?></span></td>
+                                    <td class="cell-nowrap"><span class="font-monospace"><?= esc($nisn) ?></span></td>
                                     <td class="fw-semibold"><?= esc($nama) ?></td>
 
                                     <!-- Gender chip -->
-                                    <td>
+                                    <td class="cell-nowrap">
                                         <?php if ($gender === 'L'): ?>
                                             <span class="gender-chip gender-male" title="Laki-laki">
                                                 <i class="fa-solid fa-person" aria-hidden="true"></i> Laki-laki
@@ -348,14 +379,17 @@
                                         <?php endif; ?>
                                     </td>
 
-                                    <td><?= esc($taTahun) ?></td>
-                                    <td><?= esc($taSmtr) ?></td>
+                                    <!-- Urutan sesuai header -->
+                                    <td class="cell-nowrap"><?= esc($taTahun) ?></td>
+                                    <td class="cell-nowrap"><?= esc($kelasTampil) ?></td>
                                     <td><?= esc($mapelNama) ?></td>
-                                    <td><?= esc($katKode) ?></td>
-                                    <td><?= esc($skor) ?></td>
-                                    <td><?= esc(format_ddmmyyyy_ke_tanggal_indo($tglTampil)) ?></td>
+                                    <td class="cell-nowrap"><?= esc($taSmtr) ?></td>
+                                    <td class="cell-nowrap"><?= esc($katKode) ?></td>
+                                    <td class="cell-nowrap"><?= esc($skor) ?></td>
+                                    <td class="cell-nowrap"><?= esc(format_ddmmyyyy_ke_tanggal_indo($tglTampil)) ?></td>
                                     <td><?= esc($ket) ?></td>
-                                    <td>
+
+                                    <td class="cell-nowrap">
                                         <a href="<?= $hrefEdit ?>" class="btn btn-primary btn-sm" title="Edit">
                                             <i class="fa-solid fa-pen-to-square"></i>
                                         </a>
@@ -368,9 +402,10 @@
                                     </td>
                                 </tr>
                             <?php
-                                $no++; // increment di akhir loop
+                                $no++;
                             endforeach; ?>
                         </tbody>
+
                     </table>
 
                 </div>

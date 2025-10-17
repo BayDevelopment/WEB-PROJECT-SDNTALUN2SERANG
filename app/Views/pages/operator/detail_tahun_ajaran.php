@@ -68,7 +68,7 @@ $fmtDate = function ($d) {
 };
 ?>
 
-<div class="container-fluid px-4 page-section">
+<div class="container-fluid px-4 page-section fade-in-up delay-300">
     <!-- Header -->
     <div class="d-sm-flex align-items-center justify-content-between mb-3">
         <div>

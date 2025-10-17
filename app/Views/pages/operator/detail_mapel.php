@@ -88,7 +88,7 @@ $statusCls = $isActive ? 'badge-active' : 'badge-inactive';
 $idMapel   = (int)($mapel['id_mapel'] ?? 0);
 ?>
 
-<div class="container-fluid px-4 page-section mb-3">
+<div class="container-fluid px-4 page-section mb-3 fade-in-up delay-300">
     <!-- Header -->
     <div class="d-sm-flex align-items-center justify-content-between mb-3">
         <div>

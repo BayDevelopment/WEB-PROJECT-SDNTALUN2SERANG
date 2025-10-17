@@ -254,7 +254,7 @@
                                 <?= csrf_field() ?>
 
                                 <!-- Username -->
-                                <div class="col">
+                                <div class="col-12 col-md-6">
                                     <label class="form-label">Username</label>
                                     <div class="input-group">
                                         <span class="input-group-text"><i class="fa-regular fa-user"></i></span>
@@ -270,7 +270,7 @@
                                 </div>
 
                                 <!-- Email -->
-                                <div class="col">
+                                <div class="col-12 col-md-6">
                                     <label class="form-label">Email</label>
                                     <div class="input-group">
                                         <span class="input-group-text"><i class="fa-regular fa-envelope"></i></span>
@@ -285,7 +285,7 @@
                                 </div>
 
                                 <!-- Role (dikunci) -->
-                                <div class="col">
+                                <div class="col-12 col-md-6">
                                     <label for="role_display" class="form-label">Role</label>
                                     <div class="input-group">
                                         <span class="input-group-text"><i class="fa-solid fa-user-shield"></i></span>
@@ -300,7 +300,7 @@
                                 </div>
 
                                 <!-- Status (dikunci aktif) -->
-                                <div class="col">
+                                <div class="col-12 col-md-6">
                                     <label class="form-label">Status</label>
                                     <div class="input-group">
                                         <span class="input-group-text"><i class="fa-regular fa-circle-check"></i></span>
@@ -310,12 +310,15 @@
                                     <div class="form-text">Status akun dikunci sebagai <strong>Aktif</strong>.</div>
                                 </div>
 
-                                <!-- Actions -->
-                                <div class="col-12 d-flex justify-content-end gap-2 mt-3">
-                                    <button type="reset" class="btn btn-outline-secondary rounded-pill py-2">Reset</button>
-                                    <button id="btnSubmitAccount" type="submit" class="btn btn-brand ring-focus rounded-pill py-2">
-                                        <i class="fa-regular fa-floppy-disk me-1"></i> Simpan Perubahan
-                                    </button>
+                                <div class="col-12 col-md-12 mt-3">
+                                    <div class="d-grid gap-2">
+                                        <button type="reset" class="btn btn-outline-secondary rounded-pill py-2 w-100">
+                                            Reset
+                                        </button>
+                                        <button id="btnSubmitAccount" type="submit" class="btn btn-brand ring-focus rounded-pill py-2 w-100">
+                                            <i class="fa-regular fa-floppy-disk me-1"></i> Simpan Perubahan
+                                        </button>
+                                    </div>
                                 </div>
                             </form>
                         </div>
@@ -327,7 +330,7 @@
                                 <?= csrf_field() ?>
 
                                 <!-- Password Saat Ini -->
-                                <div class="col">
+                                <div class="col-12 col-md-6">
                                     <label class="form-label">Password Saat Ini</label>
                                     <div class="form-floating mb-3 position-relative">
                                         <input
@@ -355,7 +358,7 @@
                                 </div>
 
                                 <!-- Password Baru -->
-                                <div class="col">
+                                <div class="col-12 col-md-6">
                                     <label class="form-label">Password Baru</label>
                                     <div class="form-floating mb-2 position-relative">
                                         <input
@@ -390,7 +393,7 @@
                                 </div>
 
                                 <!-- Konfirmasi Password Baru -->
-                                <div class="col">
+                                <div class="col-12 col-md-6">
                                     <label class="form-label">Konfirmasi Password Baru</label>
                                     <div class="form-floating mb-3 position-relative">
                                         <input
@@ -420,13 +423,13 @@
                                 </div>
 
 
-                                <!-- Actions (di paling bawah) -->
                                 <!-- Actions (Keamanan) -->
-                                <div class="col-12 mt-3">
-                                    <hr class="my-2">
-                                    <div class="d-grid d-md-flex justify-content-md-end gap-2">
-                                        <button type="reset" class="btn btn-outline-secondary rounded-pill py-2">Reset</button>
-                                        <button id="btnSubmitSecurity" type="submit" class="btn btn-brand ring-focus rounded-pill py-2 px-4">
+                                <div class="col-12 col-md-12 mt-3">
+                                    <div class="d-grid gap-2">
+                                        <button type="reset" class="btn btn-outline-secondary rounded-pill py-2 w-100">
+                                            Reset
+                                        </button>
+                                        <button id="btnSubmitAccount" type="submit" class="btn btn-brand ring-focus rounded-pill py-2 w-100">
                                             <i class="fa-regular fa-floppy-disk me-1"></i> Simpan Perubahan
                                         </button>
                                     </div>

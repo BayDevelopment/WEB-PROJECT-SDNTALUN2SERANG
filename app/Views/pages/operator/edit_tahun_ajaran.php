@@ -44,6 +44,7 @@
         border-color: #93c5fd
     }
 
+    /* lock klik */
     .form-lock {
         position: relative
     }
@@ -52,8 +53,34 @@
         content: '';
         position: absolute;
         inset: 0;
-        background: rgba(255, 255, 255, .35);
+        background: rgba(255, 255, 255, .4);
         pointer-events: auto
+    }
+
+    /* overlay loading */
+    .form-blocker {
+        position: absolute;
+        inset: 0;
+        background: rgba(255, 255, 255, .6);
+        backdrop-filter: blur(1px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 5
+    }
+
+    .form-blocker.d-none {
+        display: none
+    }
+
+    .form-blocker-inner {
+        display: flex;
+        align-items: center;
+        padding: .5rem .75rem;
+        border-radius: .75rem;
+        background: rgba(255, 255, 255, .9);
+        box-shadow: 0 .4rem 1rem rgba(0, 0, 0, .08);
+        font-weight: 600
     }
 </style>
 
@@ -75,8 +102,7 @@ $getErr = fn($f) => $errors[$f] ?? '';
 $sub    = $sub_judul ?? 'Edit Tahun Ajaran';
 ?>
 
-<div class="container-fluid px-4 page-section">
-    <!-- Header -->
+<div class="container-fluid px-4 page-section fade-in-up delay-300">
     <div class="d-sm-flex align-items-center justify-content-between mb-3">
         <div>
             <h1 class="mt-4 page-title"><?= esc($sub) ?></h1>
@@ -105,107 +131,96 @@ $sub    = $sub_judul ?? 'Edit Tahun Ajaran';
         <div class="card-body">
             <form id="formEditTahunAjaran"
                 action="<?= site_url('operator/edit/tahun-ajaran/' . rawurlencode((string)$id)) ?>"
-                method="post" autocomplete="off" novalidate>
+                method="post" autocomplete="off" novalidate
+                class="position-relative">
                 <?= csrf_field() ?>
                 <input type="hidden" name="_method" value="PUT">
 
                 <div class="row g-3 mb-3">
-                    <!-- Tahun (format 2024/2025) -->
                     <div class="col-md-6">
                         <label for="tahun" class="form-label">Tahun</label>
-                        <input
-                            type="text"
+                        <input type="text"
                             class="form-control<?= $hasErr('tahun') ? ' is-invalid' : '' ?>"
                             id="tahun" name="tahun"
                             placeholder="Contoh: 2024/2025"
                             value="<?= esc($tahunVal) ?>"
-                            maxlength="9" pattern="^\d{4}/\d{4}$"
-                            inputmode="numeric" aria-describedby="tahunFeedback">
+                            maxlength="9" pattern="^\d{4}/\d{4}$" inputmode="numeric"
+                            aria-describedby="tahunFeedback">
                         <div class="form-text">Gunakan format <strong>YYYY/YYYY</strong> (mis. 2024/2025).</div>
                         <?php if ($hasErr('tahun')): ?>
-                            <div id="tahunFeedback" class="invalid-feedback d-block">
-                                <?= esc($getErr('tahun')) ?>
-                            </div>
+                            <div id="tahunFeedback" class="invalid-feedback d-block"><?= esc($getErr('tahun')) ?></div>
                         <?php endif; ?>
                     </div>
 
-                    <!-- Semester -->
                     <div class="col-md-6">
                         <label for="semester" class="form-label">Semester</label>
-                        <select
-                            class="form-select<?= $hasErr('semester') ? ' is-invalid' : '' ?>"
-                            id="semester" name="semester" aria-describedby="semesterFeedback" required>
+                        <select class="form-select<?= $hasErr('semester') ? ' is-invalid' : '' ?>"
+                            id="semester" name="semester" required aria-describedby="semesterFeedback">
                             <option value="" disabled <?= $semVal ? '' : 'selected' ?>>— Pilih Semester —</option>
                             <option value="ganjil" <?= $semVal === 'ganjil' ? 'selected' : '' ?>>Ganjil</option>
                             <option value="genap" <?= $semVal === 'genap'  ? 'selected' : '' ?>>Genap</option>
                         </select>
                         <?php if ($hasErr('semester')): ?>
-                            <div id="semesterFeedback" class="invalid-feedback d-block">
-                                <?= esc($getErr('semester')) ?>
-                            </div>
+                            <div id="semesterFeedback" class="invalid-feedback d-block"><?= esc($getErr('semester')) ?></div>
                         <?php endif; ?>
                     </div>
 
-                    <!-- Start / End Date -->
                     <div class="col-md-6">
                         <label for="start_date" class="form-label">Mulai</label>
-                        <input
-                            type="date"
+                        <input type="date"
                             class="form-control<?= $hasErr('start_date') ? ' is-invalid' : '' ?>"
                             id="start_date" name="start_date"
                             value="<?= esc($startVal) ?>"
                             aria-describedby="startDateFeedback">
                         <?php if ($hasErr('start_date')): ?>
-                            <div id="startDateFeedback" class="invalid-feedback d-block">
-                                <?= esc($getErr('start_date')) ?>
-                            </div>
+                            <div id="startDateFeedback" class="invalid-feedback d-block"><?= esc($getErr('start_date')) ?></div>
                         <?php endif; ?>
                     </div>
+
                     <div class="col-md-6">
                         <label for="end_date" class="form-label">Selesai</label>
-                        <input
-                            type="date"
+                        <input type="date"
                             class="form-control<?= $hasErr('end_date') ? ' is-invalid' : '' ?>"
                             id="end_date" name="end_date"
                             value="<?= esc($endVal) ?>"
                             aria-describedby="endDateFeedback">
                         <?php if ($hasErr('end_date')): ?>
-                            <div id="endDateFeedback" class="invalid-feedback d-block">
-                                <?= esc($getErr('end_date')) ?>
-                            </div>
+                            <div id="endDateFeedback" class="invalid-feedback d-block"><?= esc($getErr('end_date')) ?></div>
                         <?php endif; ?>
                     </div>
 
-                    <!-- Status aktif (switch) -->
                     <div class="col-md-6">
                         <label class="form-label d-block">Status</label>
                         <input type="hidden" name="is_active" value="0">
                         <div class="form-check form-switch">
-                            <input
-                                class="form-check-input<?= $hasErr('is_active') ? ' is-invalid' : '' ?>"
+                            <input class="form-check-input<?= $hasErr('is_active') ? ' is-invalid' : '' ?>"
                                 type="checkbox" id="is_active" name="is_active" value="1"
                                 <?= $isActive === '1' ? 'checked' : '' ?>>
                             <label class="form-check-label" for="is_active">Aktif</label>
                         </div>
                         <?php if ($hasErr('is_active')): ?>
-                            <div class="invalid-feedback d-block">
-                                <?= esc($getErr('is_active')) ?>
-                            </div>
+                            <div class="invalid-feedback d-block"><?= esc($getErr('is_active')) ?></div>
                         <?php endif; ?>
                     </div>
                 </div>
 
-                <!-- Actions -->
                 <div class="d-flex gap-2 mt-4">
-                    <button type="submit" id="btnSubmit" class="btn btn-gradient rounded-pill">
-                        <span class="btn-text">
-                            <i class="fa-solid fa-floppy-disk me-2"></i> Perbarui
-                        </span>
+                    <button type="submit" id="btnSubmit" class="btn btn-gradient rounded-pill d-inline-flex align-items-center">
+                        <span class="spinner-border spinner-border-sm me-2 d-none" role="status" aria-hidden="true"></span>
+                        <span class="btn-text"><i class="fa-solid fa-floppy-disk me-2"></i> Perbarui</span>
                     </button>
 
                     <a href="<?= base_url('operator/tahun-ajaran') ?>" class="btn btn-outline-secondary rounded-pill">
                         <i class="fa-solid fa-arrow-left me-2"></i> Kembali
                     </a>
+                </div>
+
+                <!-- overlay loading -->
+                <div id="formBlocker" class="form-blocker d-none" aria-hidden="true">
+                    <div class="form-blocker-inner">
+                        <div class="spinner-border" role="status" aria-hidden="true"></div>
+                        <div class="ms-2">Memperbarui…</div>
+                    </div>
                 </div>
             </form>
         </div>
@@ -213,24 +228,55 @@ $sub    = $sub_judul ?? 'Edit Tahun Ajaran';
 </div>
 
 <script>
-    (function() {
+    document.addEventListener('DOMContentLoaded', function() {
         const form = document.getElementById('formEditTahunAjaran');
-        const btnSubmit = document.getElementById('btnSubmit');
-        const btnText = btnSubmit?.querySelector('.btn-text');
+        const btn = document.getElementById('btnSubmit');
+        const spin = btn ? btn.querySelector('.spinner-border') : null;
+        const txt = btn ? btn.querySelector('.btn-text') : null;
+        const blk = document.getElementById('formBlocker');
+        if (!form || !btn) return;
 
-        form?.addEventListener('submit', function() {
-            if (btnText) {
-                btnText.innerHTML =
-                    '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Memperbarui...';
-            }
-            btnSubmit.disabled = true;
+        let loading = false;
+
+        function freezeInputs(container) {
+            const textLike = 'input[type="text"],input[type="email"],input[type="password"],input[type="number"],input[type="date"],input[type="time"],input[type="datetime-local"],input[type="search"],input[type="tel"],textarea';
+            container.querySelectorAll(textLike).forEach(el => {
+                el.setAttribute('readonly', 'readonly');
+                el.setAttribute('aria-readonly', 'true');
+            });
+            container.querySelectorAll('select,input[type="checkbox"],input[type="radio"]').forEach(el => {
+                el.setAttribute('aria-disabled', 'true');
+            });
+        }
+
+        function armLoading(e) {
+            if (loading) return;
+            loading = true;
+
+            if (spin) spin.classList.remove('d-none');
+            if (txt) txt.innerHTML = '<i class="fa-solid fa-floppy-disk me-2"></i> Memperbarui…';
+            btn.setAttribute('disabled', 'disabled');
+            btn.classList.add('disabled');
+
+            if (blk) blk.classList.remove('d-none');
+            form.setAttribute('aria-busy', 'true');
             form.classList.add('form-lock');
+            freezeInputs(form);
 
-            // pastikan token CSRF aktif
+            // pastikan CSRF tetap aktif
             const csrf = form.querySelector('input[name="<?= csrf_token() ?>"]');
             if (csrf) csrf.disabled = false;
-        });
-    })();
+
+            // submit setelah repaint
+            e && e.preventDefault();
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => form.submit());
+            });
+        }
+
+        btn.addEventListener('click', armLoading);
+        form.addEventListener('submit', armLoading);
+    });
 </script>
 
 <?= $this->endSection() ?>
